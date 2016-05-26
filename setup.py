@@ -35,10 +35,46 @@ import re
 import subprocess
 import os
 import sys
-from setuptools import setup , find_packages
-from setuptools.command.install import install
-from setuptools.command.develop import develop
+
+# Find setuptools
+try:
+  from setuptools import setup, Extension
+  from setuptools import find_packages
+  from setuptools.command.install import install
+  from setuptools.command.develop import develop
+  from setuptools.command.sdist import sdist
+except ImportError:
+  try:
+    from ez_setup import use_setuptools
+    use_setuptools()
+    from setuptools import setup, Extension, find_packages
+    from setuptools.command.install import install
+    from setuptools.command.develop import develop
+    from setuptools.command.sdist import sdist
+  except ImportError:
+    sys.stderr.write(
+        "Could not import setuptools; make sure you have setuptools or "
+        "ez_setup installed.\n")
+    raise
+
 from distutils.command.clean import clean as _clean
+from distutils.command.build_py import build_py as _build_py
+from distutils.spawn import find_executable
+from wheel.bdist_wheel import bdist_wheel
+
+# Find the Protocol Compiler.
+if 'PROTOC' in os.environ and os.path.exists(os.environ['PROTOC']):
+  protoc = os.environ['PROTOC']
+elif os.path.exists("../src/protoc"):
+  protoc = "../src/protoc"
+elif os.path.exists("../src/protoc.exe"):
+  protoc = "../src/protoc.exe"
+elif os.path.exists("../vsprojects/Debug/protoc.exe"):
+  protoc = "../vsprojects/Debug/protoc.exe"
+elif os.path.exists("../vsprojects/Release/protoc.exe"):
+  protoc = "../vsprojects/Release/protoc.exe"
+else:
+  protoc = find_executable("protoc")
 #http://stackoverflow.com/questions/27843481/python-project-using-protocol-buffers-deployment-issues
 def generate_proto(source):
     """Invokes the Protocol Compiler to generate a _pb2.py from the given
@@ -53,8 +89,15 @@ def generate_proto(source):
         if not os.path.exists(source):
             sys.stderr.write("Can't find required file: %s\n" % source)
             sys.exit(-1)
-        protoc="protoc"
+        #protoc="protoc"
+        if protoc == None:
+            sys.stderr.write(
+                "protoc is not installed nor found in ../src.  Please compile it "
+                "or install the binary package.\n")
+            sys.exit(-1)
+
         protoc_command = [ protoc, "-I=./pfpdb/", "--python_out=./pfpdb/", source ]
+
         if subprocess.call(protoc_command) != 0:
             sys.stderr.write("Could Not generate Proto bindings for python - Please ensure protobuf compiler is installed and working")
             sys.exit(-1)
@@ -83,6 +126,11 @@ class clean(_clean):
           os.remove(filepath)
     # _clean is an old-style class, so super() doesn't work.
     _clean.run(self)
+
+class _bdist_wheel(bdist_wheel):
+    def run(self):
+        generate_proto("./pfpdb/PFPSimDebugger.proto")
+        bdist_wheel.run(self)
 
 version = re.search(
     '^__version__\s*=\s*"(.*)"',
