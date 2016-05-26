@@ -164,7 +164,8 @@ setup(
     cmdclass={
         'install':pfpdbinstall,
         'develop':pfpdbdevelop,
-        'clean':clean
+        'clean':clean,
+	'bdist_wheel':_bdist_wheel
         },
     classifiers=[
         "Development Status :: 4 - Beta",
