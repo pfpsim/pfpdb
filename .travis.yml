@@ -29,7 +29,9 @@ before_install:
   - make
   - sudo make install
   - cd ..
-  # Install nanomsg
+  - sudo ldconfig
+  - protoc --version
+    # Install nanomsg
   - if [ ! -f nanomsg-0.5-beta/Makefile ]; then wget http://download.nanomsg.org/nanomsg-0.5-beta.tar.gz; fi
   - if [ ! -f nanomsg-0.5-beta/Makefile ]; then tar -xzf nanomsg-0.5-beta.tar.gz; fi
   - cd nanomsg-0.5-beta
@@ -37,6 +39,7 @@ before_install:
   - make
   - sudo make install
   - cd ..
+  - sudo ldconfig
 install:
   - python setup.py sdist --format=gztar
   - python setup.py bdist_wheel --universal
@@ -45,7 +48,7 @@ install:
   - chmod og-w $HOME/.python-eggs
   - cp dist/* ./
 script:
-  - sudo source .travis/testinstallmethods.sh
+  - sudo .travis/testinstallmethods.sh
 
 before_deploy:
   - python setup.py bdist_wheel --universal
