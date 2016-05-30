@@ -158,7 +158,7 @@ def installfrompip(packagestoinstall):
         print ("Installing Dependencies")
         for package in packagestoinstall:
             print ("Installing "+str(package))
-            subprocess.call(["pip","install ",str(package)])
+            subprocess.call(["pip","install",str(package)])
         print ("Done Installing")
     else:
         sys.stderr.write(
