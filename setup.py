@@ -103,10 +103,16 @@ from distutils.spawn import find_executable
 try:
     from wheel.bdist_wheel import bdist_wheel
 except ImportError:
-    class bdist_wheel:
-        def run(self,thing):
+    import distutils.cmd
+    class bdist_wheel(distutils.cmd.Command):
+        def finalize_options(self):
+            pass
+        def initialize_options(self):
+            pass
+        user_options = []
+        def run(self):
             sys.stderr.write(
-                "wheel.bdist_wheel NOT FOUND"
+                "wheel.bdist_wheel NOT FOUND "
                 "please run: pip install wheel\n")
             sys.exit(-1)
 
