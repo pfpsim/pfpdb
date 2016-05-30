@@ -38,7 +38,7 @@ before_install:
   - sudo make install
   - cd ..
 install:
-  - python setup.py sdisti --format=gztar
+  - python setup.py sdist --format=gztar
   - python setup.py bdist_wheel --universal
   # Workaround, see: https://github.com/travis-ci/travis-ci/issues/1748
   - mkdir -p $HOME/.python-eggs
