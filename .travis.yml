@@ -5,10 +5,10 @@ python:
   - "3.3"
   - "3.4"
   - "3.5"
-cache:
-  directories:
-    - protobuf-2.6.1
-    - nanomsg-0.5-beta
+#cache:
+#  directories:
+#    - protobuf-2.6.1
+#    - nanomsg-0.5-beta
 branches:
   except:
     - documentation
