@@ -24,7 +24,7 @@ before_install:
   - if [ ! -f protobuf/Makefile ]; then wget https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.gz; fi
   - if [ ! -f protobuf/Makefile ]; then tar -xzf protobuf-2.6.1.tar.gz; fi
   - cd protobuf-2.6.1
-  - if [ ! -f autogen.sh ]; then ./autogen.sh
+  - if [ ! -f autogen.sh ]; then ./autogen.sh; fi
   - if [ ! -f Makefile ]; then ./configure --prefix=/usr --with-unix-layout; fi
   - make
   - sudo make install
