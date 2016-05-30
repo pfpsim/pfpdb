@@ -100,7 +100,15 @@ except ImportError:
 from distutils.command.clean import clean as _clean
 from distutils.command.build_py import build_py as _build_py
 from distutils.spawn import find_executable
-from wheel.bdist_wheel import bdist_wheel
+try:
+    from wheel.bdist_wheel import bdist_wheel
+except ImportError:
+    class bdist_wheel:
+        def run(self,thing):
+            sys.stderr.write(
+                "wheel.bdist_wheel NOT FOUND"
+                "please run: pip install wheel\n")
+            sys.exit(-1)
 
 InstallationRequirments = [
     'protobuf',
@@ -121,10 +129,6 @@ elif os.path.exists("../vsprojects/Release/protoc.exe"):
   protoc = "../vsprojects/Release/protoc.exe"
 else:
   protoc = find_executable("protoc")
-
-
-
-
 
 #http://stackoverflow.com/questions/27843481/python-project-using-protocol-buffers-deployment-issues
 def generate_proto(source):
