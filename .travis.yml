@@ -48,7 +48,7 @@ install:
   - chmod og-w $HOME/.python-eggs
   - cp dist/* ./
 script:
-  - sudo .travis/testinstallmethods.sh
+  - .travis/testinstallmethods.sh
 
 before_deploy:
   - python setup.py bdist_wheel --universal
