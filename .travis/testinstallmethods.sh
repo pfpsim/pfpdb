@@ -10,13 +10,14 @@ i=0
 for env in "${VirtualEnvironments[@]}"
 do
     echo $env
-#    virtualenv ${env}
- #   source $env/bin/activate
+#   virtualenv ${env}
+#   source $env/bin/activate
     ${Executable[${i}]} ${InstallCommand[${i}]} ${InstallTarget[${i}]}
     mkdir temp && cd temp
     #cp ../.tests/* ./ 
     #runtest.sh
     which pfpdb
+    pfpdb 
     cd ../ && rm -rf temp
 #    deactivate
     ((i++))
