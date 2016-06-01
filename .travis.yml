@@ -17,6 +17,7 @@ before_install:
   - sudo sed -i 's/precise/trusty/g' /etc/apt/sources.list.d/trusty.list
   - sudo apt-get update -qq -y
   - sudo apt-get install -q -y python-setuptools python-dev libssl-dev libffi-dev python-pip libtool autoconf g++
+  - sudo pip install --upgrade pip
   - sudo pip install wheel
   - sudo pip install virtualenv
   - sudo pip install cffi --upgrade
