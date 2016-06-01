@@ -40,7 +40,7 @@ install:
   - python setup.py bdist_wheel --universal
   - mkdir -p $HOME/.python-eggs
   - chmod og-w $HOME/.python-eggs
-  - cp dist/* ./`
+  - cp dist/* ./
 script:
   - .travis/testinstallmethods.sh
 before_deploy:
