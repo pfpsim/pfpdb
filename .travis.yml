@@ -1,14 +1,58 @@
 language: python
 python:
- - "2.7"
- - "3.2"
- - "3.3"
- - "3.4"
- - "3.5"
-
+  - '2.7'
+  - '3.2'
+  - '3.3'
+  - '3.4'
+  - '3.5'
+branches:
+  except:
+  - documentation
 before_install:
-  - echo "Before"
-install: 
-  - echo "Yes"
-script: 
-  - echo "OK"
+  - sudo cp /etc/apt/sources.list /etc/apt/sources.list.d/trusty.list
+  - sudo sed -i 's/precise/trusty/g' /etc/apt/sources.list.d/trusty.list
+  - sudo apt-get update -qq -y
+  - sudo apt-get install -q -y python-setuptools python-dev libssl-dev libffi-dev python-pip libtool autoconf g++
+  - sudo pip install --upgrade pip
+  - sudo pip install wheel
+  - sudo pip install virtualenv
+  - sudo pip install cffi --upgrade
+  - if [ ! -f protobuf/Makefile ]; then wget https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.gz; fi
+  - if [ ! -f protobuf/Makefile ]; then tar -xzf protobuf-2.6.1.tar.gz; fi
+  - cd protobuf-2.6.1
+  - if [ ! -f autogen.sh ]; then ./autogen.sh; fi
+  - if [ ! -f Makefile ]; then ./configure --prefix=/usr --with-unix-layout; fi
+  - make
+  - sudo make install
+  - cd ..
+  - sudo ldconfig
+  - protoc --version
+  - if [ ! -f nanomsg-0.5-beta/Makefile ]; then wget http://download.nanomsg.org/nanomsg-0.5-beta.tar.gz; fi
+  - if [ ! -f nanomsg-0.5-beta/Makefile ]; then tar -xzf nanomsg-0.5-beta.tar.gz; fi
+  - cd nanomsg-0.5-beta
+  - if [ ! -f Makefile ]; then ./configure; fi
+  - make
+  - sudo make install
+  - cd ..
+  - sudo ldconfig
+install:
+  - python setup.py sdist --format=gztar
+  - python setup.py bdist_wheel --universal
+  - mkdir -p $HOME/.python-eggs
+  - chmod og-w $HOME/.python-eggs
+  - cp dist/* ./
+script:
+  - .travis/testinstallmethods.sh
+before_deploy:
+  - python setup.py bdist_wheel --universal
+  - python setup.py sdist --formats=gztar,zip
+  - rm dist/*.egg
+deploy:
+  provider: releases
+  api_key:
+    secure: vUZnFtYGvqYYLOZBf+dUdmgV7Sf+G7bfPQ3OOzBIjSBcbIhZN5wtQBtteblbu+Q0QQZ/Qy2NqdtDXYy+UJsfFueEp2/T4JHKE2ml4P2FkhwCiyjzyj9L/rG1+oqIm/5J9ykYPIJhLTQdHlVtGbikZgrI8CGRyDXthX/VSv042+mM3SFLUP5hf7kfNYYY7DA7g5nPVNBHNv759bQKfIzn0r3wYkMFHCKXI+Z2KWMx5u3JbwonT7z38UMDJL/vwpMjFioFtELIFVAfomIQU5OiocdWQ0WjTl5TUWBXSKkR1/GkxYiBk1UlnnGwMzwda2Z+lC4l1pU1bVih33e9I7wqoGgAN40w0wbuiRXSXdLOLOIQHhnBQx03zNDpg/kD1Yp2SJD6oCeY968Uz8sTlrn2PL+Ym0jslPLHkvf1mC1iBLyzu0aQIUgNRgcERjGpiEgWF2TbFf/WSMZZN1bMd2bzkazlooIavj2h04Km82idluTf8txsi1GD7n/56p6cW4ElkQcNN3WhSEbAmX1z5CAN2rhrr/KJ9bjWlVf9CI89kG/YYpZudVpRxQM4DS6d9iLwwtm6wpbmiGe4Ss3SrPwtITJ7lTsKfnvBoEGABlfRkrR3TH5GG4KyVkX4Jdz04v6AfYLi4Z7S9BuCifaRxLug7U5hbcyOTK3O5peGr4ktwDU=
+  file: dist/*
+  file_glob: true
+  on:
+    tags: true
+    python: "2.7"
