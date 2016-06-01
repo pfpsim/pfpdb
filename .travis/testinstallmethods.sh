@@ -5,7 +5,7 @@
 VirtualEnvironments=( venv-pipwheel venv-piptgz venv-pythoninstall venv-pythondevelop )
 Executable=( "pip" "pip" "python" "python" ) 
 InstallCommand=( "install" "install" "setup.py" "setup.py" )
-InstallTarget=( "*.whl" "*.tar.gz" "install" "develop" )
+InstallTarget=( "*.whl" "pfpdb*.tar.gz" "install" "develop" )
 i=0 
 for env in "${VirtualEnvironments[@]}"
 do
