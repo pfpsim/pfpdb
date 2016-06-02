@@ -1511,10 +1511,6 @@ table_dump <table_name>
             print("\033[0mPacket ID: " + str(reply.packet_id) + "\nModule: " + reply.module + " (" + read_str + ")\nTime: " + str(reply.time) + " ns")
         elif msg_type == PFPSimDebugger_pb2.DebugMsg.PacketDropped:
             print("\033[0mPacket Dropped!\nPacket ID: " + str(reply.packet_id) + "\nModule: " + reply.module + "\nReason: " + reply.reason)
-        elif msg_type == PFPSimDebugger_pb2.DebugMsg.SimulationError:
-            print("\033[0mError: " + reply.error_msg + "\nSimulation exited with code: " + reply.error_code)
-            print("Quiting Debugger...")
-            sys.exit(1)
         elif msg_type == PFPSimDebugger_pb2.DebugMsg.GenericAcknowledge:
             pass
 

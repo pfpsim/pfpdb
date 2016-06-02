@@ -1,5 +1,3 @@
-import unittest
-
 from pfpdb import DebuggerIPCSession
 from pfpdb import PFPSimDebugger
 from pfpdb import PFPSimDebuggerCmd
