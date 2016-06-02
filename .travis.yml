@@ -17,6 +17,7 @@ before_install:
   - sudo pip install wheel
   - sudo pip install virtualenv
   - sudo pip install cffi --upgrade
+  - sudo pip install protobuf==3.0.0b2 --upgrade
   - if [ ! -f protobuf/Makefile ]; then wget https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.gz; fi
   - if [ ! -f protobuf/Makefile ]; then tar -xzf protobuf-2.6.1.tar.gz; fi
   - cd protobuf-2.6.1
