@@ -49,7 +49,7 @@ from tabulate import tabulate
 import json
 from threading import Thread
 from time import sleep
-import PFPSimDebugger_pb2
+from . import PFPSimDebugger_pb2
 
 # DebuggerIPCSession class - Handles the transmission and reception of messages to and from the DebuggerIPCServer
 class DebuggerIPCSession:

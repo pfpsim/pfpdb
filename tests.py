@@ -1,12 +1,12 @@
-from pfpdb import DebuggerIPCSession
-from pfpdb import PFPSimDebugger
-from pfpdb import PFPSimDebuggerCmd
-import pfpdb
+from pfpdb.pfpdb import DebuggerIPCSession
+from pfpdb.pfpdb import PFPSimDebugger
+from pfpdb.pfpdb import PFPSimDebuggerCmd
+import pfpdb.pfpdb as pfpdb
 
 from threading import Thread
 
 import nnpy
-import PFPSimDebugger_pb2 as pb2
+from pfpdb import PFPSimDebugger_pb2 as pb2
 
 from functools import partial
 
@@ -32,8 +32,12 @@ class DummyProcess(object):
 
 # http://stackoverflow.com/a/17981937/1084754
 from contextlib import contextmanager
-from StringIO import StringIO
 import sys
+if sys.version_info[0] < 3:
+    from StringIO import StringIO
+else:
+    from io import StringIO
+
 
 @contextmanager
 def captured_output():
