@@ -73,10 +73,10 @@ def test_run():
 
     response.message = submsg.SerializeToString()
 
-    expected = (u'\x1b[0mPacket Dropped!\n'+
-               (u'Packet ID: %d\n' % submsg.packet_id) +
-               (u'Module: %s\n'    % submsg.module) +
-               (u'Reason: %s'      % submsg.reason))
+    expected = ('\x1b[0mPacket Dropped!\n'+
+               ('Packet ID: %d\n' % submsg.packet_id) +
+               ('Module: %s\n'    % submsg.module) +
+               ('Reason: %s'      % submsg.reason))
 
     test_method = partial(check_run, response, "", expected)
     test_method.description = "run with packet_dropped response"
