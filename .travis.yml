@@ -42,6 +42,7 @@ install:
   - chmod og-w $HOME/.python-eggs
   - cp dist/* ./
 script:
+  - nosetests
   - .travis/testinstallmethods.sh
 before_deploy:
   - python setup.py bdist_wheel --universal

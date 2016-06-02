@@ -21,7 +21,7 @@ def dummy_model_main(url, rsp):
     sock = nnpy.Socket(nnpy.AF_SP, nnpy.REP)
     sock.bind(url)
     sock.recv()
-    sock.send(rsp)
+    sock.send(rsp.SerializeToString())
     sock.close()
 
 class DummyProcess(object):
@@ -55,8 +55,6 @@ def test_run():
 
     response.message = submsg.SerializeToString()
 
-    response = response.SerializeToString()
-
     test_method = partial(check_run, response, "", "")
     test_method.description = "run with generic ack response"
     yield test_method
@@ -77,7 +75,6 @@ def test_run():
                (u'Packet ID: %d\n' % submsg.packet_id) +
                (u'Module: %s\n'    % submsg.module) +
                (u'Reason: %s'      % submsg.reason))
-    response = response.SerializeToString()
 
     test_method = partial(check_run, response, "", expected)
     test_method.description = "run with packet_dropped response"
