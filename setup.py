@@ -117,10 +117,14 @@ except ImportError:
             sys.exit(-1)
 
 InstallationRequirments = [
-    'protobuf',
     'nnpy',
     'tabulate'
 ]
+
+if sys.version_info[0] < 3:
+    InstallationRequirments.append("protobuf")
+else:
+    InstallationRequirments.append("protobuf==3.0.0b2")
 
 # Find the Protocol Compiler.
 if 'PROTOC' in os.environ and os.path.exists(os.environ['PROTOC']):

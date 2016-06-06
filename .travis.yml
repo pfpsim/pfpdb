@@ -1,7 +1,6 @@
 language: python
 python:
   - '2.7'
-  - '3.2'
   - '3.3'
   - '3.4'
   - '3.5'
@@ -17,20 +16,20 @@ before_install:
   - sudo pip install wheel
   - sudo pip install virtualenv
   - sudo pip install cffi --upgrade
-  - if [ ! -f protobuf/Makefile ]; then wget https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.gz; fi
-  - if [ ! -f protobuf/Makefile ]; then tar -xzf protobuf-2.6.1.tar.gz; fi
+  - wget https://github.com/google/protobuf/releases/download/v2.6.1/protobuf-2.6.1.tar.gz
+  - tar -xzf protobuf-2.6.1.tar.gz
   - cd protobuf-2.6.1
-  - if [ ! -f autogen.sh ]; then ./autogen.sh; fi
-  - if [ ! -f Makefile ]; then ./configure --prefix=/usr --with-unix-layout; fi
+  - ./autogen.sh
+  - ./configure --prefix=/usr --with-unix-layout
   - make
   - sudo make install
   - cd ..
   - sudo ldconfig
   - protoc --version
-  - if [ ! -f nanomsg-0.5-beta/Makefile ]; then wget http://download.nanomsg.org/nanomsg-0.5-beta.tar.gz; fi
-  - if [ ! -f nanomsg-0.5-beta/Makefile ]; then tar -xzf nanomsg-0.5-beta.tar.gz; fi
+  - wget http://download.nanomsg.org/nanomsg-0.5-beta.tar.gz
+  - tar -xzf nanomsg-0.5-beta.tar.gz
   - cd nanomsg-0.5-beta
-  - if [ ! -f Makefile ]; then ./configure; fi
+  - ./configure
   - make
   - sudo make install
   - cd ..
@@ -42,6 +41,7 @@ install:
   - chmod og-w $HOME/.python-eggs
   - cp dist/* ./
 script:
+  - nosetests --nologcapture
   - .travis/testinstallmethods.sh
 before_deploy:
   - python setup.py bdist_wheel --universal
