@@ -57,8 +57,11 @@ def test_run():
 
     response.message = submsg.SerializeToString()
 
-    test_method = partial(check_run, response, "", "")
+    test_method = partial(check_run, response, "run", "")
     test_method.description = "run with generic ack response"
+    yield test_method
+    test_method = partial(check_run, response, "r", "")
+    test_method.description = "r with generic ack response"
     yield test_method
 
     #################################################################
@@ -78,8 +81,11 @@ def test_run():
                ('Module: %s\n'    % submsg.module) +
                ('Reason: %s'      % submsg.reason))
 
-    test_method = partial(check_run, response, "", expected)
+    test_method = partial(check_run, response, "run", expected)
     test_method.description = "run with packet_dropped response"
+    yield test_method
+    test_method = partial(check_run, response, "r", expected)
+    test_method.description = "r with packet_dropped response"
     yield test_method
 
     #################################################################
@@ -98,7 +104,7 @@ def check_run(response_msg, run_command, expected_stdout):
     debugger_cli = PFPSimDebuggerCmd(debugger)
 
     with captured_output() as (out, err):
-        debugger_cli.do_run(run_command)
+        debugger_cli.onecmd(run_command)
 
     assert out.getvalue().strip() == expected_stdout
     assert err.getvalue().strip() == ""
