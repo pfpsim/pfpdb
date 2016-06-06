@@ -8,7 +8,7 @@ The official debugger provided as a part of the PFPSim Framework for packet leve
 
 To install `pfpdb`, you must have:
 
-- Any of the officially supported Python versions (2.7, 3.2, 3.3, 3.4, 3.5)
+- Any of the officially supported Python versions (2.7, 3.3, 3.4, 3.5)
 - Either [`pip`](https://pypi.python.org/pypi/pip) or [`setuptools`](https://pypi.python.org/pypi/setuptools).
 
 ## Using the PFPSim GUI Installer
