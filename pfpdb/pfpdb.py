@@ -46,6 +46,7 @@ import logging
 import traceback
 from functools import wraps
 from tabulate import tabulate
+from hexdump import hexdump
 import json
 from threading import Thread
 from time import sleep

@@ -292,4 +292,11 @@ message ParsedPacketValueMsg {
   repeated Header headers = 1;
 }
 
+message GetRawPacketMsg {
+  optional int32 id = 1;
+}
+
+message RawPacketValueMsg {
+  optional bytes value = 1;
+}
 
