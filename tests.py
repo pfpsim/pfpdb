@@ -10,6 +10,8 @@ from pfpdb import PFPSimDebugger_pb2 as pb2
 
 from functools import partial
 
+from hexdump import hexdump
+
 import sys
 
 if sys.version_info[0] < 3:
@@ -143,7 +145,10 @@ def test_run():
 
     submsg = pb2.RawPacketValueMsg()
 
-    raw_data = bytes([chr(c) for c in range(256)])
+    if sys.version_info[0] < 3:
+        raw_data = ''.join(chr(c) for c in range(256))
+    else:
+        raw_data = bytes(range(256))
 
     submsg.value = raw_data
 
