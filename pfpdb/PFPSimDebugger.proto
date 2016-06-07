@@ -277,16 +277,16 @@ message TableEntriesMsg {
 }
 
 message GetParsedPacketMsg {
-
+  optional int32 id = 1;
 }
 
 message ParsedPacketValueMsg {
   message Field {
-    required string name  = 1;
-    required bytes  value = 2;
+    optional string name  = 1;
+    optional bytes  value = 2;
   }
   message Header {
-    required string name  = 1;
+    optional string name  = 1;
     repeated Field fields = 2;
   }
   repeated Header headers = 1;

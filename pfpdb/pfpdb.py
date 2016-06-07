@@ -63,6 +63,7 @@ class DebuggerIPCSession:
         self.socket.send(message.SerializeToString())
 
     # Receive message from server through the socket.
+    # TODO(gordon) There must be a more concise way of doing this
     def recv(self):
         data = self.socket.recv(nnpy.DONTWAIT)
         recv_msg = PFPSimDebugger_pb2.DebugMsg()
@@ -135,6 +136,10 @@ class DebuggerIPCSession:
             child_msg = PFPSimDebugger_pb2.TableEntriesMsg()
             child_msg.ParseFromString(recv_msg.message)
             return child_msg;
+        elif recv_msg.type == PFPSimDebugger_pb2.DebugMsg.ParsedPacketValue:
+            child_msg = PFPSimDebugger_pb2.ParsedPacketValueMsg()
+            child_msg.ParseFromString(recv_msg.message)
+            return recv_msg.type, child_msg
         else:
             return recv_msg.type, recv_msg
 
@@ -313,6 +318,13 @@ class GetTableEntriesMessage(DebuggerMessage):
         super(GetTableEntriesMessage, self).__init__(PFPSimDebugger_pb2.DebugMsg.GetTableEntries)
         self.message = PFPSimDebugger_pb2.GetTableEntriesMsg()
 
+class GetParsedPacketMessage(DebuggerMessage):
+    def __init__(self, id):
+        super(GetParsedPacketMessage, self).__init__(
+                PFPSimDebugger_pb2.DebugMsg.GetParsedPacket)
+        self.message = PFPSimDebugger_pb2.GetParsedPacketMsg()
+        self.message.id = id
+
 # PFPSimDebugger class - Manages requests and replies through the IPC Session and the child process. Creates a layer of abstraction between the front end of the debugger and the ipc session and the child process.
 class PFPSimDebugger(object):
     def __init__(self, ipc_session, process, pid, verbose):
@@ -396,6 +408,16 @@ class PFPSimDebugger(object):
         ids, locations, times = self.recv()
         self.log.debug("Msg Received!")
         return ids, locations, times
+
+    def print_packet_data(self, packet_id):
+        self.log.debug("Request: Get packet fields")
+
+        request = GetParsedPacketMessage(packet_id)
+        self.ipc_session.send(request)
+        self.log.debug("Msg Sent!")
+        msg_type, recv_msg = self.recv()
+        self.log.debug("Msg Received!")
+        return recv_msg
 
     def continue_(self, time_ns = None):
         self.log.debug("Request: Continue")
@@ -726,7 +748,6 @@ print dropped_packets
         '''
 
 
-        print "Print called with line input: " + line
         args = line.split(" ")
         if args[0] == "counter" or args[0] == "-c":
             try:
@@ -770,6 +791,15 @@ print dropped_packets
                 for i, mod in enumerate(reply.module_list):
                     table.append([reply.packet_id_list[i], mod, reply.reason_list[i]])
                 print(tabulate(table, headers=["Packet ID", "Module", "Reason"], numalign="left"))
+        elif args[0].isdigit() and len(args) == 1:
+            packet_data = self.debugger.print_packet_data(int(args[0]))
+
+            for header in packet_data.headers:
+                print(header.name + ":")
+                for field in header.fields:
+                    print("  " + field.name + ": " + ':'.join(hex(ord(n))[2:].zfill(2).upper() for n in field.value))
+                print("")
+
         else:
             raise BadInputException("print")
 

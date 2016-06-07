@@ -18,14 +18,8 @@ def dummy_model_main(url, rsp):
     """
     sock = nnpy.Socket(nnpy.AF_SP, nnpy.REP)
     sock.bind(url)
-    # Set one second receive timeout
-    sock.setsockopt(nnpy.SOL_SOCKET, nnpy.RCVTIMEO, 1000)
-    try:
-        sock.recv()
-        # Sock raises an assertion when it times out
-    except AssertionError:
-        return
-    sock.send(rsp.SerializeToString())
+    sock.recv()
+    sock.send([c for c in rsp.SerializeToString()])
     sock.close()
 
 class DummyProcess(object):
@@ -127,7 +121,7 @@ def test_run():
                 "\n" +
                 "IPv4:\n" +
                 "  dst: 80:00:00:01\n" +
-                "  src: 0A:00:00:01\n")
+                "  src: 0A:00:00:01")
 
     test_method = partial(check_run, response, "print 1", expected)
     test_method.description = "print parsed content of packet"
@@ -137,8 +131,8 @@ def assert_text_equal(expected, actual):
     try:
         assert expected == actual
     except AssertionError:
-        print "Expected:",expected
-        print "Actual:",actual
+        print "Expected:",repr(expected)
+        print "Actual:",repr(actual)
         raise
 
 
