@@ -712,10 +712,21 @@ print -p <filters>
         -m <module_name>
             Will only print packets which are currently in the given module.
 
+print raw <packet id>
+    Print the raw contents of the given packet in a hexdump format.
+
+print <packet id>
+    Print the parsed contents of the given packet.
+
+print field <field name> <packet id>
+    Print the value of the specified field in the given packet.
+
 print dropped_packets
     Print the list of packets that have been dropped.
         '''
 
+
+        print "Print called with line input: " + line
         args = line.split(" ")
         if args[0] == "counter" or args[0] == "-c":
             try:

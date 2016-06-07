@@ -18,7 +18,13 @@ def dummy_model_main(url, rsp):
     """
     sock = nnpy.Socket(nnpy.AF_SP, nnpy.REP)
     sock.bind(url)
-    sock.recv()
+    # Set one second receive timeout
+    sock.setsockopt(nnpy.SOL_SOCKET, nnpy.RCVTIMEO, 1000)
+    try:
+        sock.recv()
+        # Sock raises an assertion when it times out
+    except AssertionError:
+        return
     sock.send(rsp.SerializeToString())
     sock.close()
 
@@ -90,6 +96,51 @@ def test_run():
 
     #################################################################
 
+    response      = pb2.DebugMsg()
+    response.type = pb2.DebugMsg.ParsedPacketValue
+
+    submsg = pb2.ParsedPacketValueMsg()
+
+    h = submsg.headers.add()
+    h.name = "Ethernet"
+    f = h.fields.add()
+    f.name  = "dst"
+    f.value = b"\xAA\xBB\xCC\xAA\xBB\xCC"
+    f = h.fields.add()
+    f.name  = "src"
+    f.value = b"\xFF\x01\x01\x01\x01\x01"
+
+    h = submsg.headers.add()
+    h.name = "IPv4"
+    f = h.fields.add()
+    f.name  = "dst"
+    f.value = b"\x80\x00\x00\x01"
+    f = h.fields.add()
+    f.name  = "src"
+    f.value = b"\x0A\x00\x00\x01"
+
+    response.message = submsg.SerializeToString()
+
+    expected = ("Ethernet:\n" +
+                "  dst: AA:BB:CC:AA:BB:CC\n" +
+                "  src: FF:01:01:01:01:01\n" +
+                "\n" +
+                "IPv4:\n" +
+                "  dst: 80:00:00:01\n" +
+                "  src: 0A:00:00:01\n")
+
+    test_method = partial(check_run, response, "print 1", expected)
+    test_method.description = "print parsed content of packet"
+    yield test_method
+
+def assert_text_equal(expected, actual):
+    try:
+        assert expected == actual
+    except AssertionError:
+        print "Expected:",expected
+        print "Actual:",actual
+        raise
+
 
 def check_run(response_msg, run_command, expected_stdout):
     ipc_url = "ipc:///tmp/pfpdb-test.ipc"
@@ -106,8 +157,8 @@ def check_run(response_msg, run_command, expected_stdout):
     with captured_output() as (out, err):
         debugger_cli.onecmd(run_command)
 
-    assert out.getvalue().strip() == expected_stdout
-    assert err.getvalue().strip() == ""
+    assert_text_equal(expected_stdout, out.getvalue().strip())
+    assert_text_equal("", err.getvalue().strip())
 
     model_thread.join()
 
