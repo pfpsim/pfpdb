@@ -797,7 +797,15 @@ print dropped_packets
             for header in packet_data.headers:
                 print(header.name + ":")
                 for field in header.fields:
-                    print("  " + field.name + ": " + ':'.join(hex(ord(n))[2:].zfill(2).upper() for n in field.value))
+                    field_bytes = field.value
+
+                    # In python2.X this is a str, so we need to map each char to its
+                    # integer equivalent.
+                    # In python3.X its bytes, which is already a sequence of ints
+                    if type(field_bytes) == str:
+                        field_bytes = map(ord, field_bytes)
+
+                    print("  " + field.name + ": " + ':'.join(hex(n)[2:].zfill(2).upper() for n in field_bytes))
                 print("")
 
         else:

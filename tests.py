@@ -10,6 +10,16 @@ from pfpdb import PFPSimDebugger_pb2 as pb2
 
 from functools import partial
 
+import sys
+
+if sys.version_info[0] < 3:
+    def str_to_bytes(s):
+        return [c for c in s]
+else:
+    def str_to_bytes(s):
+        return bytes(s)
+
+
 def dummy_model_main(url, rsp):
     """
     Dummy function to be used in a thread mocking a debugged
@@ -19,7 +29,7 @@ def dummy_model_main(url, rsp):
     sock = nnpy.Socket(nnpy.AF_SP, nnpy.REP)
     sock.bind(url)
     sock.recv()
-    sock.send([c for c in rsp.SerializeToString()])
+    sock.send(str_to_bytes(rsp.SerializeToString()))
     sock.close()
 
 class DummyProcess(object):
@@ -131,8 +141,8 @@ def assert_text_equal(expected, actual):
     try:
         assert expected == actual
     except AssertionError:
-        print "Expected:",repr(expected)
-        print "Actual:",repr(actual)
+        print("Expected:",repr(expected))
+        print("Actual:",repr(actual))
         raise
 
 

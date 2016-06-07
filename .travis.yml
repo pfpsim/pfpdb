@@ -7,7 +7,6 @@ python:
 branches:
   except:
   - documentation
-  - packet-content
 before_install:
   - sudo cp /etc/apt/sources.list /etc/apt/sources.list.d/trusty.list
   - sudo sed -i 's/precise/trusty/g' /etc/apt/sources.list.d/trusty.list
