@@ -145,6 +145,10 @@ class DebuggerIPCSession:
             child_msg = PFPSimDebugger_pb2.RawPacketValueMsg()
             child_msg.ParseFromString(recv_msg.message)
             return recv_msg.type, child_msg
+        elif recv_msg.type == PFPSimDebugger_pb2.DebugMsg.PacketFieldValue:
+            child_msg = PFPSimDebugger_pb2.PacketFieldValueMsg()
+            child_msg.ParseFromString(recv_msg.message)
+            return recv_msg.type, child_msg
         else:
             return recv_msg.type, recv_msg
 
@@ -337,6 +341,14 @@ class GetRawPacketMessage(DebuggerMessage):
         self.message = PFPSimDebugger_pb2.GetRawPacketMsg()
         self.message.id = id
 
+class GetPacketFieldMessage(DebuggerMessage):
+    def __init__(self, id, field_name):
+        super(GetPacketFieldMessage, self).__init__(
+                PFPSimDebugger_pb2.DebugMsg.GetPacketField)
+        self.message = PFPSimDebugger_pb2.GetPacketFieldMsg()
+        self.message.id = id
+        self.message.field_name = field_name
+
 # PFPSimDebugger class - Manages requests and replies through the IPC Session and the child process. Creates a layer of abstraction between the front end of the debugger and the ipc session and the child process.
 class PFPSimDebugger(object):
     def __init__(self, ipc_session, process, pid, verbose):
@@ -441,6 +453,15 @@ class PFPSimDebugger(object):
         self.log.debug("Msg Received!")
         return msg_type, recv_msg
 
+    def get_packet_field(self, packet_id, field_name):
+        self.log.debug("Request: Get packet field: " + field_name)
+
+        request = GetPacketFieldMessage(packet_id, field_name)
+        self.ipc_session.send(request)
+        self.log.debug("Msg Sent!")
+        msg_type, recv_msg = self.recv()
+        self.log.debug("Msg Received!")
+        return msg_type, recv_msg
 
     def continue_(self, time_ns = None):
         self.log.debug("Request: Continue")
@@ -760,11 +781,23 @@ print -p <filters>
 print raw <packet id>
     Print the raw contents of the given packet in a hexdump format.
 
+    Once a packet is parsed, this prints only the unparsed payload, before
+    a packet is parsed or after it is deparsed, this prints the entire raw
+    content of the packet
+
 print <packet id>
     Print the parsed contents of the given packet.
 
-print field <field name> <packet id>
+    Before the packet is parsed, the output of this command is undefined.
+
+print field <field name> <packet id> [<output format>]
     Print the value of the specified field in the given packet.
+
+    Output format is one of:
+      hex (default): prints a hexadecimal representation of the field data
+      dec          : prints a decimal representation of the field data
+      ip4          : prints the field as an IPv4 address. Only valid for 4-byte fields
+
 
 print dropped_packets
     Print the list of packets that have been dropped.
@@ -843,6 +876,35 @@ print dropped_packets
                 raw_packet = packet_data.value
 
                 hexdump(raw_packet)
+
+        elif len(args) in (3,4) and args[0] == "field" and args[2].isdigit():
+
+            msg_type, packet_data = self.debugger.get_packet_field(int(args[2]), args[1])
+
+            if msg_type == PFPSimDebugger_pb2.DebugMsg.GenericAcknowledge:
+                print("Cannot print packet " + args[2])
+            else:
+                field_bytes = packet_data.value
+
+                # In python2.X this is a str, so we need to map each char to its
+                # integer equivalent.
+                # In python3.X its bytes, which is already a sequence of ints
+                if type(field_bytes) == str:
+                    field_bytes = map(ord, field_bytes)
+
+                fmt = args[3] if len(args) == 4 else 'hex'
+
+                fmt = 'hex' if fmt == 'ip4' and len(field_bytes) != 4 else fmt
+
+                if fmt == 'hex':
+                    print(':'.join(hex(n)[2:].zfill(2).upper() for n in field_bytes))
+                elif fmt == 'dec':
+                    print(reduce(lambda x,y: (x*0x100)+y, field_bytes))
+                elif fmt == 'ip4':
+                    print('.'.join(map(str, field_bytes)))
+                else:
+                    raise BadInputException("print")
+
         else:
             raise BadInputException("print")
 

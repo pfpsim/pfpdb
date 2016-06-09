@@ -184,9 +184,31 @@ def test_run():
     submsg = pb2.GenericAcknowledgeMsg()
 
     response.message = submsg.SerializeToString()
+
     test_method = partial(check_run, response, "print 1", "Cannot print packet 1")
     yield test_method
     test_method = partial(check_run, response, "print raw 1", "Cannot print packet 1")
+    yield test_method
+    test_method = partial(check_run, response, "print field ipv4.src 1 ipv", "Cannot print packet 1")
+    yield test_method
+
+    #################################################################
+    response      = pb2.DebugMsg()
+    response.type = pb2.DebugMsg.PacketFieldValue
+
+    submsg = pb2.PacketFieldValueMsg()
+
+    submsg.value = ''.join(map(chr,(192,255,0,1)))
+
+    response.message = submsg.SerializeToString()
+
+    test_method = partial(check_run, response, "print field ipv4.src 1 ip4", "192.255.0.1")
+    yield test_method
+    test_method = partial(check_run, response, "print field ipv4.src 1 dec", "3237937153")
+    yield test_method
+    test_method = partial(check_run, response, "print field ipv4.src 1 hex", "C0:FF:00:01")
+    yield test_method
+    test_method = partial(check_run, response, "print field ipv4.src 1", "C0:FF:00:01")
     yield test_method
 
 
