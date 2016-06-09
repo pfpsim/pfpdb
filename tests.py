@@ -198,7 +198,12 @@ def test_run():
 
     submsg = pb2.PacketFieldValueMsg()
 
-    submsg.value = ''.join(map(chr,(192,255,0,1)))
+    ip_addr = (192,255,0,1)
+
+    if sys.version_info[0] < 3:
+        submsg.value = ''.join(map(chr, ip_addr))
+    else:
+        submsg.value = bytes(ip_addr)
 
     response.message = submsg.SerializeToString()
 

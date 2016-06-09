@@ -52,6 +52,9 @@ from threading import Thread
 from time import sleep
 from . import PFPSimDebugger_pb2
 
+if sys.version_info[0] > 2:
+    from functools import reduce
+
 # DebuggerIPCSession class - Handles the transmission and reception of messages to and from the DebuggerIPCServer
 class DebuggerIPCSession:
     def __init__(self, url):
