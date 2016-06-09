@@ -177,6 +177,18 @@ def test_run():
     test_method.description = "print raw packet content"
     yield test_method
 
+    #################################################################
+    response      = pb2.DebugMsg()
+    response.type = pb2.DebugMsg.GenericAcknowledge
+
+    submsg = pb2.GenericAcknowledgeMsg()
+
+    response.message = submsg.SerializeToString()
+    test_method = partial(check_run, response, "print 1", "Cannot print packet 1")
+    yield test_method
+    test_method = partial(check_run, response, "print raw 1", "Cannot print packet 1")
+    yield test_method
+
 
 def assert_text_equal(expected, actual):
     try:

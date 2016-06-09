@@ -429,7 +429,7 @@ class PFPSimDebugger(object):
         self.log.debug("Msg Sent!")
         msg_type, recv_msg = self.recv()
         self.log.debug("Msg Received!")
-        return recv_msg
+        return msg_type, recv_msg
 
     def get_raw_packet(self, packet_id):
         self.log.debug("Request: Get raw packet")
@@ -439,7 +439,7 @@ class PFPSimDebugger(object):
         self.log.debug("Msg Sent!")
         msg_type, recv_msg = self.recv()
         self.log.debug("Msg Received!")
-        return recv_msg
+        return msg_type, recv_msg
 
 
     def continue_(self, time_ns = None):
@@ -815,28 +815,34 @@ print dropped_packets
                     table.append([reply.packet_id_list[i], mod, reply.reason_list[i]])
                 print(tabulate(table, headers=["Packet ID", "Module", "Reason"], numalign="left"))
         elif args[0].isdigit() and len(args) == 1:
-            packet_data = self.debugger.get_parsed_packet(int(args[0]))
+            msg_type, packet_data = self.debugger.get_parsed_packet(int(args[0]))
 
-            for header in packet_data.headers:
-                print(header.name + ":")
-                for field in header.fields:
-                    field_bytes = field.value
+            if msg_type == PFPSimDebugger_pb2.DebugMsg.GenericAcknowledge:
+                print("Cannot print packet " + args[0])
+            else:
+                for header in packet_data.headers:
+                    print(header.name + ":")
+                    for field in header.fields:
+                        field_bytes = field.value
 
-                    # In python2.X this is a str, so we need to map each char to its
-                    # integer equivalent.
-                    # In python3.X its bytes, which is already a sequence of ints
-                    if type(field_bytes) == str:
-                        field_bytes = map(ord, field_bytes)
+                        # In python2.X this is a str, so we need to map each char to its
+                        # integer equivalent.
+                        # In python3.X its bytes, which is already a sequence of ints
+                        if type(field_bytes) == str:
+                            field_bytes = map(ord, field_bytes)
 
-                    print("  " + field.name + ": " + ':'.join(hex(n)[2:].zfill(2).upper() for n in field_bytes))
-                print("")
+                        print("  " + field.name + ": " + ':'.join(hex(n)[2:].zfill(2).upper() for n in field_bytes))
+                    print("")
 
         elif len(args) == 2 and args[0] == "raw" and args[1].isdigit():
-            packet_data = self.debugger.get_raw_packet(int(args[1]))
+            msg_type, packet_data = self.debugger.get_raw_packet(int(args[1]))
 
-            raw_packet = packet_data.value
+            if msg_type == PFPSimDebugger_pb2.DebugMsg.GenericAcknowledge:
+                print("Cannot print packet " + args[1])
+            else:
+                raw_packet = packet_data.value
 
-            hexdump(raw_packet)
+                hexdump(raw_packet)
         else:
             raise BadInputException("print")
 
