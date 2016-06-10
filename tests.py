@@ -22,7 +22,7 @@ else:
         return bytes(s)
 
 
-def dummy_model_main(url, rsp):
+def dummy_model_main(url, rsp, validate):
     """
     Dummy function to be used in a thread mocking a debugged
     model. Receives a single command and then sends the
@@ -30,7 +30,11 @@ def dummy_model_main(url, rsp):
     """
     sock = nnpy.Socket(nnpy.AF_SP, nnpy.REP)
     sock.bind(url)
-    sock.recv()
+    received = sock.recv()
+
+    if validate is not None:
+        validate.accept_request(received)
+
     sock.send(str_to_bytes(rsp.SerializeToString()))
     sock.close()
 
@@ -49,6 +53,16 @@ if sys.version_info[0] < 3:
     from StringIO import StringIO
 else:
     from io import StringIO
+
+class RequestValidator(object):
+    def __init__(self, validate_fn):
+        self.validate_fn = validate_fn
+
+    def accept_request(self, req):
+        self.req = req
+
+    def is_valid(self):
+        self.validate_fn(self.req)
 
 
 @contextmanager
@@ -207,17 +221,42 @@ def test_run():
 
     response.message = submsg.SerializeToString()
 
-    test_method = partial(check_run, response, "print field ipv4.src 1 ip4", "192.255.0.1")
+    def validate_get_field(req, field_name, packet_id):
+        wrap = pb2.DebugMsg()
+        wrap.ParseFromString(req)
+
+        assert wrap.type == pb2.DebugMsg.GetPacketField
+
+        field_req = pb2.GetPacketFieldMsg()
+        field_req.ParseFromString(wrap.message)
+
+        assert_equal(field_req.field_name, field_name)
+        assert_equal(field_req.id, packet_id)
+
+    validator = RequestValidator(partial(validate_get_field, "ipv4.src", 1))
+
+    test_method = partial(check_run, response, "print field ipv4.src 1 ip4", "192.255.0.1", validator)
     yield test_method
-    test_method = partial(check_run, response, "print field ipv4.src 1 dec", "3237937153")
+    test_method = partial(check_run, response, "print field ipv4.src 1 dec", "3237937153", validator)
     yield test_method
-    test_method = partial(check_run, response, "print field ipv4.src 1 hex", "C0:FF:00:01")
+    test_method = partial(check_run, response, "print field ipv4.src 1 hex", "C0:FF:00:01", validator)
     yield test_method
-    test_method = partial(check_run, response, "print field ipv4.src 1", "C0:FF:00:01")
+    test_method = partial(check_run, response, "print field ipv4.src 1", "C0:FF:00:01", validator)
+    yield test_method
+
+    validator = RequestValidator(partial(validate_get_field, "ipv4.src", 0))
+
+    test_method = partial(check_run, response, "print field ipv4.src 0 ip4", "192.255.0.1", validator)
+    yield test_method
+    test_method = partial(check_run, response, "print field ipv4.src 0 dec", "3237937153", validator)
+    yield test_method
+    test_method = partial(check_run, response, "print field ipv4.src 0 hex", "C0:FF:00:01", validator)
+    yield test_method
+    test_method = partial(check_run, response, "print field ipv4.src 0", "C0:FF:00:01", validator)
     yield test_method
 
 
-def assert_text_equal(expected, actual):
+def assert_equal(expected, actual):
     try:
         assert expected == actual
     except AssertionError:
@@ -226,11 +265,11 @@ def assert_text_equal(expected, actual):
         raise
 
 
-def check_run(response_msg, run_command, expected_stdout):
+def check_run(response_msg, run_command, expected_stdout, validator=None):
     ipc_url = "ipc:///tmp/pfpdb-test.ipc"
 
     model_thread = Thread(target=dummy_model_main,
-                          args=(ipc_url, response_msg))
+                          args=(ipc_url, response_msg, validator))
 
     model_thread.start()
 
@@ -241,8 +280,11 @@ def check_run(response_msg, run_command, expected_stdout):
     with captured_output() as (out, err):
         debugger_cli.onecmd(run_command)
 
-    assert_text_equal(expected_stdout, out.getvalue().strip())
-    assert_text_equal("", err.getvalue().strip())
+    assert_equal(expected_stdout, out.getvalue().strip())
+    assert_equal("", err.getvalue().strip())
 
     model_thread.join()
+
+    if validator is not None:
+        validator.is_valid()
 

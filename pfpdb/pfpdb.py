@@ -457,7 +457,7 @@ class PFPSimDebugger(object):
         return msg_type, recv_msg
 
     def get_packet_field(self, packet_id, field_name):
-        self.log.debug("Request: Get packet field: " + field_name)
+        self.log.debug("Request: Get packet field: " + field_name + " for packet " + str(packet_id))
 
         request = GetPacketFieldMessage(packet_id, field_name)
         self.ipc_session.send(request)
@@ -881,6 +881,8 @@ print dropped_packets
                 hexdump(raw_packet)
 
         elif len(args) in (3,4) and args[0] == "field" and args[2].isdigit():
+
+            #print("Looking up field " + args[1] + " for packet id " + args[2])
 
             msg_type, packet_data = self.debugger.get_packet_field(int(args[2]), args[1])
 
