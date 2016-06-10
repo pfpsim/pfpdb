@@ -60,6 +60,7 @@ class DebuggerIPCSession:
     def __init__(self, url):
         self.url = url  # url on which the ipc will occur
         self.socket = nnpy.Socket(nnpy.AF_SP, nnpy.REQ) # create socket
+        self.socket.setsockopt(nnpy.SOL_SOCKET, nnpy.RCVTIMEO, 100)
         self.socket.connect(self.url)   # connect socket
 
     # Send message through socket. The message must be an object generated from the protocol buffer compiler or a wrapper around such an object.
@@ -69,7 +70,7 @@ class DebuggerIPCSession:
     # Receive message from server through the socket.
     # TODO(gordon) There must be a more concise way of doing this
     def recv(self):
-        data = self.socket.recv(nnpy.DONTWAIT)
+        data = self.socket.recv()
         recv_msg = PFPSimDebugger_pb2.DebugMsg()
         recv_msg.ParseFromString(data)
         if recv_msg.type == PFPSimDebugger_pb2.DebugMsg.CounterValue:
@@ -368,15 +369,17 @@ class PFPSimDebugger(object):
             try:
                 return self.ipc_session.recv()
             except AssertionError:
-                if nnpy.nanomsg.nn_errno() != nnpy.EAGAIN:
-                    raise RuntimeError("Error in nanomsg recv. Errno: " + str(nnpy.nanomsg.nn_errno()))
+                if nnpy.nanomsg.nn_errno() not in (nnpy.ETIMEDOUT, nnpy.EAGAIN):
+                    error_msg = nnpy.ffi.string(nnpy.nanomsg.nn_strerror(nnpy.nanomsg.nn_errno()))
+                    raise RuntimeError("Error in nanomsg recv: " + error_msg)
                 else:
+                    # The read timed out. If the process is dead, we should terminate, otherwise do
+                    # nothing and try again
                     if self.process is not None:
                         exit_code = self.process.poll()
                         if exit_code != None:
                             print("The child process has exited. Exit Code: " + str(exit_code))
                             sys.exit(1)
-                        sleep(1)
                     # Used when attaching to running simulation
                     else:
                         try:
@@ -384,8 +387,6 @@ class PFPSimDebugger(object):
                         except OSError:
                             print("The attached process is no longer running.")
                             sys.exit(0)
-                        else:
-                            sleep(1)
 
     def run(self, time_ns = None):
         self.log.debug("Request: Run")
