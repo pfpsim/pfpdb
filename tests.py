@@ -200,10 +200,13 @@ def test_run():
     response.message = submsg.SerializeToString()
 
     test_method = partial(check_run, response, "print 1", "Cannot print packet 1")
+    test_method.description = "Print parsed packet that doesn't exist"
     yield test_method
     test_method = partial(check_run, response, "print raw 1", "Cannot print packet 1")
+    test_method.description = "Print raw packet that doesn't exist"
     yield test_method
     test_method = partial(check_run, response, "print field ipv4.src 1 ipv", "Cannot print packet 1")
+    test_method.description = "Print packet field for packet that doesn't exist"
     yield test_method
 
     #################################################################
@@ -221,7 +224,7 @@ def test_run():
 
     response.message = submsg.SerializeToString()
 
-    def validate_get_field(req, field_name, packet_id):
+    def validate_get_field(field_name, packet_id, req):
         wrap = pb2.DebugMsg()
         wrap.ParseFromString(req)
 
@@ -236,23 +239,31 @@ def test_run():
     validator = RequestValidator(partial(validate_get_field, "ipv4.src", 1))
 
     test_method = partial(check_run, response, "print field ipv4.src 1 ip4", "192.255.0.1", validator)
+    test_method.description = "Print field packet id 1, ip4 format"
     yield test_method
     test_method = partial(check_run, response, "print field ipv4.src 1 dec", "3237937153", validator)
+    test_method.description = "Print field packet id 1, dec format"
     yield test_method
     test_method = partial(check_run, response, "print field ipv4.src 1 hex", "C0:FF:00:01", validator)
+    test_method.description = "Print field packet id 1, hex format"
     yield test_method
     test_method = partial(check_run, response, "print field ipv4.src 1", "C0:FF:00:01", validator)
+    test_method.description = "Print field packet id 1, default format"
     yield test_method
 
     validator = RequestValidator(partial(validate_get_field, "ipv4.src", 0))
 
     test_method = partial(check_run, response, "print field ipv4.src 0 ip4", "192.255.0.1", validator)
+    test_method.description = "Print field packet id 0, ip4 format"
     yield test_method
     test_method = partial(check_run, response, "print field ipv4.src 0 dec", "3237937153", validator)
+    test_method.description = "Print field packet id 0, dec format"
     yield test_method
     test_method = partial(check_run, response, "print field ipv4.src 0 hex", "C0:FF:00:01", validator)
+    test_method.description = "Print field packet id 0, hex format"
     yield test_method
     test_method = partial(check_run, response, "print field ipv4.src 0", "C0:FF:00:01", validator)
+    test_method.description = "Print field packet id 0, default format"
     yield test_method
 
 
