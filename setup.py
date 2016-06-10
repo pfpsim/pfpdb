@@ -118,7 +118,8 @@ except ImportError:
 
 InstallationRequirments = [
     'nnpy',
-    'tabulate'
+    'tabulate',
+    'hexdump'
 ]
 
 if sys.version_info[0] < 3:
