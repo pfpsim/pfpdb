@@ -266,6 +266,19 @@ def test_run():
     test_method.description = "Print field packet id 0, default format"
     yield test_method
 
+    #################################################################
+    response      = pb2.DebugMsg()
+    response.type = pb2.DebugMsg.StartTracingStatus
+
+    submsg = pb2.StartTracingStatusMsg()
+    submsg.id = 1
+
+    response.message = submsg.SerializeToString()
+
+    test_method = partial(check_run, response, "trace counter foobar", "Trace started")
+    test_method.description = "Start tracing a counter"
+    yield test_method
+
 
 def assert_equal(expected, actual):
     try:
