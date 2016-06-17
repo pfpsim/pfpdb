@@ -295,6 +295,7 @@ def check_run(response_msg, run_command, expected_stdout, validator=None):
     model_thread = Thread(target=dummy_model_main,
                           args=(ipc_url, response_msg, validator))
 
+    model_thread.setDaemon(True)
     model_thread.start()
 
     ipc_session  = DebuggerIPCSession(ipc_url)

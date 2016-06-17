@@ -52,6 +52,9 @@ from threading import Thread
 from time import sleep
 from . import PFPSimDebugger_pb2
 
+# For tracing
+from multiprocessing import Process
+
 if sys.version_info[0] > 2:
     from functools import reduce
 
@@ -353,6 +356,24 @@ class GetPacketFieldMessage(DebuggerMessage):
         self.message.id = id
         self.message.field_name = field_name
 
+class StartTracingMessage(DebuggerMessage):
+    def __init__(self, **kwargs):
+        super(StartTracingMessage, self).__init__(
+                PFPSimDebugger_pb2.DebugMsg.StartTracing)
+        self.message = PFPSimDebugger_pb2.StartTracingMsg()
+
+        if "counter" in kwargs:
+            self.message.type = PFPSimDebugger_pb2.StartTracingMsg.COUNTER
+            self.message.name = kwargs["counter"]
+        elif "throughput" in kwargs:
+            raise NotImplemented("Tracing throughput not yet implemented")
+        elif "from_latency" in kwargs and "to_latency" in kwargs:
+            raise NotImplemented("Tracing latency not yet implemented")
+        else:
+            raise TypeError("Missing required Keyword Args, one of: 'counter',"
+                          + " 'throughput', or ('from_latency','to_latency')")
+
+
 # PFPSimDebugger class - Manages requests and replies through the IPC Session and the child process. Creates a layer of abstraction between the front end of the debugger and the ipc session and the child process.
 class PFPSimDebugger(object):
     def __init__(self, ipc_session, process, pid, verbose):
@@ -361,6 +382,7 @@ class PFPSimDebugger(object):
         self.pid = pid
         self.log = logging.getLogger("cmd_logger")
         self.log.addHandler(logging.StreamHandler())
+        self.traces = {}
         if verbose:
             self.log.setLevel("DEBUG")
 
@@ -466,6 +488,93 @@ class PFPSimDebugger(object):
         msg_type, recv_msg = self.recv()
         self.log.debug("Msg Received!")
         return msg_type, recv_msg
+
+    class TraceProcess(Process):
+        def __init__(self, description, id):
+            super(PFPSimDebugger.TraceProcess, self).__init__()
+            self.description = description
+            self.id = id
+            self.daemon = True
+
+        # This is the main loop of the tracing thread.
+        def run(self):
+            # I'm not 100% sure if PUB-SUB is the right model for this.
+            # For sure it will work, and it does make the code simpler on
+            # The C++ side because it only has to manage one socket.
+            s = nnpy.Socket(nnpy.AF_SP, nnpy.SUB)
+            # This may seem like a complicated scheme for subscribe topic
+            # names, but this makes the C++ side simpler, and should work
+            # Well in general. Nanomessage topic subscriptions just match
+            # The leading bytes, so if we just convert the ID to a string
+            # we'd still need to pad it with zeros, because "PFPDB1"
+            # would also match messages for "PFPDB10". This way we still
+            # support 65536 traces at the same time, which should be
+            # far more than enough.
+            topic = ("PFPDB" +
+                     chr(self.id & 0xFF) +
+                     chr((self.id >> 8) & 0xff))
+            s.setsockopt(nnpy.SUB, nnpy.SUB_SUBSCRIBE, topic)
+            s.connect("ipc:///tmp/trace.ipc")
+
+            # Now set up the matlab plot.
+            # matplotlib must be re-imported inside this function because it's
+            # run inside a seperate subprocess, and there are very weird X
+            # errors otherwise.
+            import matplotlib.pyplot as plt
+            plt.figure()
+            plt.ion() # non-blocking
+
+            while True:
+                try:
+                    msg_str = s.recv(nnpy.DONTWAIT)
+                except AssertionError:
+                    if nnpy.nanomsg.nn_errno() != nnpy.EAGAIN:
+                        error_msg = nnpy.ffi.string(
+                                nnpy.nanomsg.nn_strerror(nnpy.nanomsg.nn_errno()))
+                        raise RuntimeError("Error in nanomsg recv: " + error_msg)
+                    else:
+                        msg_str = None # EAgain is normal in nonblocking mode
+
+                if msg_str is not None:
+                    msg_str = msg_str[len("PFPDBXX"):] # Chop off topic prefix
+
+                    msg = PFPSimDebugger_pb2.TracingUpdateMsg()
+                    msg.ParseFromString(msg_str)
+
+                    if msg.HasField("float_value"):
+                        plt.scatter(msg.timestamp, msg.float_value)
+                    elif msg.HasField("int_value"):
+                        plt.scatter(msg.timestamp, msg.int_value)
+                    else:
+                        print("Something wrong, no float or int value")
+
+                plt.pause(0.001) # Run plot window event loop and updates
+
+
+    def start_trace_counter(self, counter_name):
+        self.log.debug("Request: Start tracing counter " + counter_name)
+
+        request = StartTracingMessage(counter=counter_name)
+        self.ipc_session.send(request)
+        self.log.debug("Msg Sent!")
+        msg_type, recv_msg = self.recv()
+        self.log.debug("Msg Received!")
+
+        if msg_type == PFPSimDebugger_pb2.DebugMsg.StartTracingStatus:
+            msg = PFPSimDebugger_pb2.StartTracingStatusMsg()
+            msg.ParseFromString(recv_msg.message)
+
+            trace_id = msg.id
+            trace_proc = PFPSimDebugger.TraceProcess(
+                    'Trace of counter "' + counter_name + '"',
+                    trace_id)
+            self.traces[trace_id] = trace_proc
+
+            trace_proc.start()
+            return True
+        else:
+            return False
+
 
     def continue_(self, time_ns = None):
         self.log.debug("Request: Continue")
@@ -764,6 +873,25 @@ restart clean
                     self.debugger.ignore_module(ignore.module_list[k])
         else:
             print("Cannot restart an attached process")
+
+    @handle_bad_input
+    def do_trace(self, line):
+        '''
+trace counter <counter_name>
+trace -c <counter_name>
+    Start tracing a given counter. This sets up a subscription to receive
+    updates from the model being debugged whenever this counter's value changes
+    and to plot the value of the counter over time.
+        '''
+        args = line.split()
+        if len(args) == 2 and args[0] in ('counter','-c'):
+            status = self.debugger.start_trace_counter(args[1])
+            if status:
+                print("Trace started")
+            else:
+                print("Failed to start trace for counter " + args[1])
+        else:
+            raise BadInputException("trace")
 
     # print command - obtain information from simulation and print it to screen
     @handle_bad_input
