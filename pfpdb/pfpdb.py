@@ -53,7 +53,7 @@ from time import sleep
 from . import PFPSimDebugger_pb2
 
 # For tracing
-from multiprocessing import Process
+import multiprocessing
 
 if sys.version_info[0] > 2:
     from functools import reduce
@@ -489,15 +489,9 @@ class PFPSimDebugger(object):
         self.log.debug("Msg Received!")
         return msg_type, recv_msg
 
-    class TraceProcess(Process):
-        def __init__(self, description, id):
-            super(PFPSimDebugger.TraceProcess, self).__init__()
-            self.description = description
-            self.id = id
-            self.daemon = True
-
-        # This is the main loop of the tracing thread.
-        def run(self):
+    def start_trace_counter(self, counter_name):
+        def multiprocess_trace_run():
+            import nnpy
             # I'm not 100% sure if PUB-SUB is the right model for this.
             # For sure it will work, and it does make the code simpler on
             # The C++ side because it only has to manage one socket.
@@ -510,48 +504,50 @@ class PFPSimDebugger(object):
             # would also match messages for "PFPDB10". This way we still
             # support 65536 traces at the same time, which should be
             # far more than enough.
-            topic = ("PFPDB" +
-                     chr(self.id & 0xFF) +
-                     chr((self.id >> 8) & 0xff))
+            #topic = ("PFPDB" +
+                     #chr(self.id & 0xFF) +
+                     #chr((self.id >> 8) & 0xff))
+            topic = "PFPDB"
+            s.connect("ipc:///tmp/pfpdb-trace")
             s.setsockopt(nnpy.SUB, nnpy.SUB_SUBSCRIBE, topic)
-            s.connect("ipc:///tmp/trace.ipc")
+
+            print("Subscribed to topic " + repr(topic))
 
             # Now set up the matlab plot.
-            # matplotlib must be re-imported inside this function because it's
-            # run inside a seperate subprocess, and there are very weird X
-            # errors otherwise.
             import matplotlib.pyplot as plt
             plt.figure()
             plt.ion() # non-blocking
 
             while True:
+                msgs = []
                 try:
-                    msg_str = s.recv(nnpy.DONTWAIT)
+                    while True:
+                        msgs.append(s.recv(nnpy.DONTWAIT))
                 except AssertionError:
                     if nnpy.nanomsg.nn_errno() != nnpy.EAGAIN:
                         error_msg = nnpy.ffi.string(
-                                nnpy.nanomsg.nn_strerror(nnpy.nanomsg.nn_errno()))
+                            nnpy.nanomsg.nn_strerror(nnpy.nanomsg.nn_errno()))
                         raise RuntimeError("Error in nanomsg recv: " + error_msg)
-                    else:
-                        msg_str = None # EAgain is normal in nonblocking mode
 
-                if msg_str is not None:
+                for msg_str in msgs:
+                    print("received: " + msg_str)
                     msg_str = msg_str[len("PFPDBXX"):] # Chop off topic prefix
 
-                    msg = PFPSimDebugger_pb2.TracingUpdateMsg()
-                    msg.ParseFromString(msg_str)
+                    #msg = PFPSimDebugger_pb2.TracingUpdateMsg()
+                    #msg.ParseFromString(msg_str)
 
-                    if msg.HasField("float_value"):
-                        plt.scatter(msg.timestamp, msg.float_value)
-                    elif msg.HasField("int_value"):
-                        plt.scatter(msg.timestamp, msg.int_value)
-                    else:
-                        print("Something wrong, no float or int value")
+                    x,y = map(float, msg_str.split(","))
+                    plt.scatter(x, y)
 
-                plt.pause(0.001) # Run plot window event loop and updates
+                    #if msg.HasField("float_value"):
+                        #plt.scatter(msg.timestamp, msg.float_value)
+                    #elif msg.HasField("int_value"):
+                        #plt.scatter(msg.timestamp, msg.int_value)
+                    #else:
+                        #print("Something wrong, no float or int value")
 
+                plt.pause(0.0001) # Run plot window event loop and updates
 
-    def start_trace_counter(self, counter_name):
         self.log.debug("Request: Start tracing counter " + counter_name)
 
         request = StartTracingMessage(counter=counter_name)
@@ -560,16 +556,17 @@ class PFPSimDebugger(object):
         msg_type, recv_msg = self.recv()
         self.log.debug("Msg Received!")
 
+        print("start_trace_counter: recieved type: " + str(msg_type))
+
         if msg_type == PFPSimDebugger_pb2.DebugMsg.StartTracingStatus:
             msg = PFPSimDebugger_pb2.StartTracingStatusMsg()
             msg.ParseFromString(recv_msg.message)
 
             trace_id = msg.id
-            trace_proc = PFPSimDebugger.TraceProcess(
-                    'Trace of counter "' + counter_name + '"',
-                    trace_id)
+            trace_proc = multiprocessing.Process(target=multiprocess_trace_run)
             self.traces[trace_id] = trace_proc
 
+            trace_proc.daemon = True
             trace_proc.start()
             return True
         else:
