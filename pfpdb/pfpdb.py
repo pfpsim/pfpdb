@@ -494,8 +494,6 @@ class PFPSimDebugger(object):
         msg_type, recv_msg = self.recv()
         self.log.debug("Msg Received!")
 
-        print("start_trace_counter: recieved type: " + str(msg_type))
-
         if msg_type == PFPSimDebugger_pb2.DebugMsg.StartTracingStatus:
             msg = PFPSimDebugger_pb2.StartTracingStatusMsg()
             msg.ParseFromString(recv_msg.message)

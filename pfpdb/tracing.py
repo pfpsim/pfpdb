@@ -13,7 +13,7 @@ else:
 
 # TODO(gordon) this is temporary to be replaced by the protobuf object
 from collections import namedtuple
-Data = namedtuple('Data', ['id_', 'x', 'y'])
+Data = namedtuple('Data', ['id_', 'payload'])
 
 
 class TraceManager(object):
@@ -62,14 +62,9 @@ class TraceManager(object):
                 offset = len(self.topic)
                 id_ = ord(msg[offset]) | (ord(msg[offset + 1]) << 8)
 
-                return Data(id_=id_, x=x, y=y)
-                pb_msg = pb.TracingUpdateMsg()
-                pb_msg.ParseFromString(msg[offset + 2:])
-
-                assert pb_msg.id == id_
-
-                return pb_msg
-
+                # Parses the header of the message to get the id, the actual
+                # payload part will be dealt with in the multiprocess
+                return Data(id_=id_, payload=msg[offset + 2:])
 
             return map(_deserialize_message, messages)
 
@@ -150,6 +145,11 @@ class TraceManager(object):
             plt.figure()
             # Non blocking mode.
             plt.ion()
+
+            plt.xlabel(self.x_axis)
+            plt.ylabel(self.y_axis)
+            plt.title(self.title)
+
             plt.pause(0.25) # Run plot window event loop to initialize the window
             self.log.debug("_Trace done creating figure")
             while True:
@@ -157,16 +157,21 @@ class TraceManager(object):
                 while not self.queue.empty():
                     # TODO - restore protobuf message format after done testing.
                     self.log.debug("Trace %d dequeuing and scattering (%d)" % (self.id_, i))
-                    data = self.queue.get_nowait()
-                    plt.scatter(data.x, data.y)
                     i += 1
 
-                    #if msg.HasField("float_value"):
-                        #plt.scatter(msg.timestamp, msg.float_value)
-                    #elif msg.HasField("int_value"):
-                        #plt.scatter(msg.timestamp, msg.int_value)
-                    #else:
-                        #print("Something wrong, no float or int value")
+                    data = self.queue.get_nowait()
+
+                    msg = pb.TracingUpdateMsg()
+                    msg.ParseFromString(data.payload)
+
+                    assert msg.id == data.id_
+
+                    if msg.HasField("float_value"):
+                        plt.scatter(msg.timestamp, msg.float_value)
+                    elif msg.HasField("int_value"):
+                        plt.scatter(msg.timestamp, msg.int_value)
+                    else:
+                        self.log.warning("Something wrong, no float or int value")
 
                 plt.pause(0.001) # Run plot window event loop and updates
 
