@@ -48,12 +48,8 @@ from functools import wraps
 from tabulate import tabulate
 from hexdump import hexdump
 import json
-from threading import Thread
-from time import sleep
 from . import PFPSimDebugger_pb2
-
-# For tracing
-import multiprocessing
+from . import tracing
 
 if sys.version_info[0] > 2:
     from functools import reduce
@@ -382,7 +378,7 @@ class PFPSimDebugger(object):
         self.pid = pid
         self.log = logging.getLogger("cmd_logger")
         self.log.addHandler(logging.StreamHandler())
-        self.traces = {}
+        self.trace_manager = tracing.TraceManager()
         if verbose:
             self.log.setLevel("DEBUG")
 
@@ -490,64 +486,6 @@ class PFPSimDebugger(object):
         return msg_type, recv_msg
 
     def start_trace_counter(self, counter_name):
-        def multiprocess_trace_run():
-            import nnpy
-            # I'm not 100% sure if PUB-SUB is the right model for this.
-            # For sure it will work, and it does make the code simpler on
-            # The C++ side because it only has to manage one socket.
-            s = nnpy.Socket(nnpy.AF_SP, nnpy.SUB)
-            # This may seem like a complicated scheme for subscribe topic
-            # names, but this makes the C++ side simpler, and should work
-            # Well in general. Nanomessage topic subscriptions just match
-            # The leading bytes, so if we just convert the ID to a string
-            # we'd still need to pad it with zeros, because "PFPDB1"
-            # would also match messages for "PFPDB10". This way we still
-            # support 65536 traces at the same time, which should be
-            # far more than enough.
-            #topic = ("PFPDB" +
-                     #chr(self.id & 0xFF) +
-                     #chr((self.id >> 8) & 0xff))
-            topic = "PFPDB"
-            s.connect("ipc:///tmp/pfpdb-trace")
-            s.setsockopt(nnpy.SUB, nnpy.SUB_SUBSCRIBE, topic)
-
-            print("Subscribed to topic " + repr(topic))
-
-            # Now set up the matlab plot.
-            import matplotlib.pyplot as plt
-            plt.figure()
-            plt.ion() # non-blocking
-
-            while True:
-                msgs = []
-                try:
-                    while True:
-                        msgs.append(s.recv(nnpy.DONTWAIT))
-                except AssertionError:
-                    if nnpy.nanomsg.nn_errno() != nnpy.EAGAIN:
-                        error_msg = nnpy.ffi.string(
-                            nnpy.nanomsg.nn_strerror(nnpy.nanomsg.nn_errno()))
-                        raise RuntimeError("Error in nanomsg recv: " + error_msg)
-
-                for msg_str in msgs:
-                    print("received: " + msg_str)
-                    msg_str = msg_str[len("PFPDBXX"):] # Chop off topic prefix
-
-                    #msg = PFPSimDebugger_pb2.TracingUpdateMsg()
-                    #msg.ParseFromString(msg_str)
-
-                    x,y = map(float, msg_str.split(","))
-                    plt.scatter(x, y)
-
-                    #if msg.HasField("float_value"):
-                        #plt.scatter(msg.timestamp, msg.float_value)
-                    #elif msg.HasField("int_value"):
-                        #plt.scatter(msg.timestamp, msg.int_value)
-                    #else:
-                        #print("Something wrong, no float or int value")
-
-                plt.pause(0.0001) # Run plot window event loop and updates
-
         self.log.debug("Request: Start tracing counter " + counter_name)
 
         request = StartTracingMessage(counter=counter_name)
@@ -562,12 +500,11 @@ class PFPSimDebugger(object):
             msg = PFPSimDebugger_pb2.StartTracingStatusMsg()
             msg.ParseFromString(recv_msg.message)
 
-            trace_id = msg.id
-            trace_proc = multiprocessing.Process(target=multiprocess_trace_run)
-            self.traces[trace_id] = trace_proc
+            self.trace_manager.add_trace(msg.id,
+                                         x_axis="time (ns)",
+                                         y_axis=counter_name,
+                                         title="Trace of "+counter_name)
 
-            trace_proc.daemon = True
-            trace_proc.start()
             return True
         else:
             return False
