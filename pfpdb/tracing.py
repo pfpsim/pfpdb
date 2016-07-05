@@ -4,6 +4,8 @@ import logging
 import nnpy
 import sys
 
+from . import PFPSimDebugger_pb2 as pb
+
 if sys.version_info[0] > 2:
     import queue
 else:
@@ -59,9 +61,14 @@ class TraceManager(object):
             def _deserialize_message(msg):
                 offset = len(self.topic)
                 id_ = ord(msg[offset]) | (ord(msg[offset + 1]) << 8)
-                x,y = map(float, msg[offset + 2:].split(","))
 
                 return Data(id_=id_, x=x, y=y)
+                pb_msg = pb.TracingUpdateMsg()
+                pb_msg.ParseFromString(msg[offset + 2:])
+
+                assert pb_msg.id == id_
+
+                return pb_msg
 
 
             return map(_deserialize_message, messages)
