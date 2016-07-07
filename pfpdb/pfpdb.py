@@ -364,7 +364,9 @@ class StartTracingMessage(DebuggerMessage):
         elif "throughput" in kwargs:
             raise NotImplemented("Tracing throughput not yet implemented")
         elif "from_latency" in kwargs and "to_latency" in kwargs:
-            raise NotImplemented("Tracing latency not yet implemented")
+            self.message.type = PFPSimDebugger_pb2.StartTracingMsg.LATENCY
+            self.message.name = kwargs["from_latency"]
+            self.message.end_name = kwargs["to_latency"]
         else:
             raise TypeError("Missing required Keyword Args, one of: 'counter',"
                           + " 'throughput', or ('from_latency','to_latency')")
@@ -484,6 +486,29 @@ class PFPSimDebugger(object):
         msg_type, recv_msg = self.recv()
         self.log.debug("Msg Received!")
         return msg_type, recv_msg
+
+    # TODO(gordon) This and start_trace_counter are highly redundant
+    def start_trace_latency(self, to_name, from_name):
+        self.log.debug("Request: Start tracing latency from " + from_name + " to " + to_name)
+
+        request = StartTracingMessage(to_latency=to_name, from_latency=from_name)
+        self.ipc_session.send(request)
+        self.log.debug("Msg Sent!")
+        msg_type, recv_msg = self.recv()
+        self.log.debug("Msg Received!")
+
+        if msg_type == PFPSimDebugger_pb2.DebugMsg.StartTracingStatus:
+            msg = PFPSimDebugger_pb2.StartTracingStatusMsg()
+            msg.ParseFromString(recv_msg.message)
+
+            self.trace_manager.add_trace(msg.id,
+                                         x_axis="time (ns)",
+                                         y_axis="latency (ns)",
+                                         title="Latency between %s and %s" % (to_name, from_name))
+
+            return True
+        else:
+            return False
 
     def start_trace_counter(self, counter_name):
         self.log.debug("Request: Start tracing counter " + counter_name)
@@ -822,6 +847,12 @@ trace -c <counter_name>
                 print("Trace started")
             else:
                 print("Failed to start trace for counter " + args[1])
+        elif len(args) == 3 and args[0] in ('latency','-l'):
+            status = self.debugger.start_trace_latency(args[1], args[2])
+            if status:
+                print("Trace started")
+            else:
+                print("Failed to start trace for latency from " + args[1] + " to " + args[2])
         else:
             raise BadInputException("trace")
 
