@@ -488,7 +488,7 @@ class PFPSimDebugger(object):
         return msg_type, recv_msg
 
     # TODO(gordon) This and start_trace_counter are highly redundant
-    def start_trace_latency(self, to_name, from_name):
+    def start_trace_latency(self, from_name, to_name):
         self.log.debug("Request: Start tracing latency from " + from_name + " to " + to_name)
 
         request = StartTracingMessage(to_latency=to_name, from_latency=from_name)
