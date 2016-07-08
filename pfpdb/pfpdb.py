@@ -362,7 +362,8 @@ class StartTracingMessage(DebuggerMessage):
             self.message.type = PFPSimDebugger_pb2.StartTracingMsg.COUNTER
             self.message.name = kwargs["counter"]
         elif "throughput" in kwargs:
-            raise NotImplemented("Tracing throughput not yet implemented")
+            self.message.type = PFPSimDebugger_pb2.StartTracingMsg.THROUGHPUT
+            self.message.name = kwargs["throughput"]
         elif "from_latency" in kwargs and "to_latency" in kwargs:
             self.message.type = PFPSimDebugger_pb2.StartTracingMsg.LATENCY
             self.message.name = kwargs["from_latency"]
@@ -488,6 +489,28 @@ class PFPSimDebugger(object):
         return msg_type, recv_msg
 
     # TODO(gordon) This and start_trace_counter are highly redundant
+    def start_trace_throughput(self, module):
+        self.log.debug("Request: Start tracing throughput at " + module)
+
+        request = StartTracingMessage(throughput=module)
+        self.ipc_session.send(request)
+        self.log.debug("Msg Sent!")
+        msg_type, recv_msg = self.recv()
+        self.log.debug("Msg Received!")
+
+        if msg_type == PFPSimDebugger_pb2.DebugMsg.StartTracingStatus:
+            msg = PFPSimDebugger_pb2.StartTracingStatusMsg()
+            msg.ParseFromString(recv_msg.message)
+
+            self.trace_manager.add_trace(msg.id,
+                                         x_axis="time (ns)",
+                                         y_axis="throughput (pps)",
+                                         title="Throughput of  %s" % (module))
+
+            return True
+        else:
+            return False
+
     def start_trace_latency(self, from_name, to_name):
         self.log.debug("Request: Start tracing latency from " + from_name + " to " + to_name)
 
@@ -841,20 +864,20 @@ trace -c <counter_name>
     and to plot the value of the counter over time.
         '''
         args = line.split()
-        if len(args) == 2 and args[0] in ('counter','-c'):
+        status = False
+        if   len(args) == 2 and args[0] in ('counter','-c'):
             status = self.debugger.start_trace_counter(args[1])
-            if status:
-                print("Trace started")
-            else:
-                print("Failed to start trace for counter " + args[1])
         elif len(args) == 3 and args[0] in ('latency','-l'):
             status = self.debugger.start_trace_latency(args[1], args[2])
-            if status:
-                print("Trace started")
-            else:
-                print("Failed to start trace for latency from " + args[1] + " to " + args[2])
+        elif len(args) == 2 and args[0] in ('throughput', '-t'):
+            status = self.debugger.start_trace_throughput(args[1])
         else:
             raise BadInputException("trace")
+
+        if status:
+            print("Trace started")
+        else:
+            print("Failed to start trace for counter " + args[1])
 
     # print command - obtain information from simulation and print it to screen
     @handle_bad_input

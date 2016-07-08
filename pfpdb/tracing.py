@@ -60,7 +60,7 @@ class TraceManager(object):
         def _deserialize_messages(self, messages):
             def _deserialize_message(msg):
                 offset = len(self.topic)
-                id_ = ord(msg[offset]) | (ord(msg[offset + 1]) << 8)
+                id_ = (ord(msg[offset]) << 8) | ord(msg[offset + 1])
 
                 # Parses the header of the message to get the id, the actual
                 # payload part will be dealt with in the multiprocess
