@@ -3,6 +3,7 @@ import threading
 import logging
 import nnpy
 import sys
+import warnings
 
 from . import PFPSimDebugger_pb2 as pb
 
@@ -141,37 +142,50 @@ class TraceManager(object):
             # is to create them in seperate Process's (since they're truly
             # seperate OS level processes)
             import matplotlib.pyplot as plt
-            # Create the figure for this process
-            plt.figure()
-            # Non blocking mode.
-            plt.ion()
+            import matplotlib.cbook
 
-            plt.xlabel(self.x_axis)
-            plt.ylabel(self.y_axis)
-            plt.title(self.title)
+            # Ignore warning about using default backend
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
+                # Create the figure for this process
+                x = []
+                y = []
 
-            plt.pause(0.25) # Run plot window event loop to initialize the window
-            self.log.debug("_Trace done creating figure")
-            while True:
-                i = 0
-                while not self.queue.empty():
-                    # TODO - restore protobuf message format after done testing.
-                    self.log.debug("Trace %d dequeuing and scattering (%d)" % (self.id_, i))
-                    i += 1
+                fig, ax = plt.subplots()
 
-                    data = self.queue.get_nowait()
+                line, = ax.plot(x, y)
 
-                    msg = pb.TracingUpdateMsg()
-                    msg.ParseFromString(data.payload)
+                # Non blocking mode.
+                plt.show(block=False)
+                fig.canvas.draw()
 
-                    assert msg.id == data.id_
+                plt.xlabel(self.x_axis)
+                plt.ylabel(self.y_axis)
+                plt.title(self.title)
 
-                    if msg.HasField("float_value"):
-                        plt.scatter(msg.timestamp, msg.float_value)
-                    elif msg.HasField("int_value"):
-                        plt.scatter(msg.timestamp, msg.int_value)
-                    else:
-                        self.log.warning("Something wrong, no float or int value")
+                self.log.debug("_Trace done creating figure")
+                while True:
+                    while not self.queue.empty():
+                        data = self.queue.get_nowait()
 
-                plt.pause(0.001) # Run plot window event loop and updates
+                        msg = pb.TracingUpdateMsg()
+                        msg.ParseFromString(data.payload)
+
+                        assert msg.id == data.id_
+
+                        x.append(msg.timestamp)
+
+                        if msg.HasField("float_value"):
+                            y.append(msg.float_value)
+                        elif msg.HasField("int_value"):
+                            y.append(msg.int_value)
+                        else:
+                            self.log.warning("Something wrong, no float or int value")
+
+                    line.set_ydata(y)
+                    line.set_xdata(x)
+                    ax.relim()
+                    ax.autoscale_view()
+                    fig.canvas.draw()
+                    fig.canvas.flush_events()
 
