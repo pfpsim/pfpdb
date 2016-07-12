@@ -488,33 +488,36 @@ class PFPSimDebugger(object):
         self.log.debug("Msg Received!")
         return msg_type, recv_msg
 
-    # TODO(gordon) This and start_trace_counter are highly redundant
-    def start_trace_throughput(self, module):
-        self.log.debug("Request: Start tracing throughput at " + module)
+    def start_trace(self, **kwargs):
+        FROM_LATENCY = 'from_latency'
+        TO_LATENCY   = 'to_latency'
+        THROUGHPUT   = 'throughput'
+        COUNTER      = 'counter'
 
-        request = StartTracingMessage(throughput=module)
-        self.ipc_session.send(request)
-        self.log.debug("Msg Sent!")
-        msg_type, recv_msg = self.recv()
-        self.log.debug("Msg Received!")
+        if THROUGHPUT in kwargs:
+            request = StartTracingMessage(throughput=kwargs[THROUGHPUT])
+            y_axis  = "throughput (pps)"
+            title   = "Throughput of " + kwargs[THROUGHPUT]
 
-        if msg_type == PFPSimDebugger_pb2.DebugMsg.StartTracingStatus:
-            msg = PFPSimDebugger_pb2.StartTracingStatusMsg()
-            msg.ParseFromString(recv_msg.message)
+        elif COUNTER in kwargs:
+            request = StartTracingMessage(counter=kwargs[COUNTER])
+            y_axis  = "counter value"
+            title   = kwargs[COUNTER]
 
-            self.trace_manager.add_trace(msg.id,
-                                         x_axis="time (ns)",
-                                         y_axis="throughput (pps)",
-                                         title="Throughput of  %s" % (module))
+        elif FROM_LATENCY in kwargs and TO_LATENCY in kwargs:
+            request = StartTracingMessage(to_latency=kwargs[TO_LATENCY],
+                                      from_latency=kwargs[FROM_LATENCY])
+            y_axis  = "latency (ns)"
+            if kwargs[FROM_LATENCY] == kwargs[TO_LATENCY]:
+                title = "Latency of " + kwargs[FROM_LATENCY]
+            else:
+                title = "Latency from " + kwargs[FROM_LATENCY] + " to " + kwargs[TO_LATENCY]
 
-            return True
         else:
-            return False
+            raise TypeError("Missing required keyword arguments. " +
+                            "Requires one of ["+THROUGHPUT+", "+COUNTER+", " +
+                            "("+FROM_LATENCY+", "++")]")
 
-    def start_trace_latency(self, from_name, to_name):
-        self.log.debug("Request: Start tracing latency from " + from_name + " to " + to_name)
-
-        request = StartTracingMessage(to_latency=to_name, from_latency=from_name)
         self.ipc_session.send(request)
         self.log.debug("Msg Sent!")
         msg_type, recv_msg = self.recv()
@@ -524,32 +527,8 @@ class PFPSimDebugger(object):
             msg = PFPSimDebugger_pb2.StartTracingStatusMsg()
             msg.ParseFromString(recv_msg.message)
 
-            self.trace_manager.add_trace(msg.id,
-                                         x_axis="time (ns)",
-                                         y_axis="latency (ns)",
-                                         title="Latency between %s and %s" % (to_name, from_name))
-
-            return True
-        else:
-            return False
-
-    def start_trace_counter(self, counter_name):
-        self.log.debug("Request: Start tracing counter " + counter_name)
-
-        request = StartTracingMessage(counter=counter_name)
-        self.ipc_session.send(request)
-        self.log.debug("Msg Sent!")
-        msg_type, recv_msg = self.recv()
-        self.log.debug("Msg Received!")
-
-        if msg_type == PFPSimDebugger_pb2.DebugMsg.StartTracingStatus:
-            msg = PFPSimDebugger_pb2.StartTracingStatusMsg()
-            msg.ParseFromString(recv_msg.message)
-
-            self.trace_manager.add_trace(msg.id,
-                                         x_axis="time (ns)",
-                                         y_axis=counter_name,
-                                         title="Trace of "+counter_name)
+            self.trace_manager.add_trace(msg.id, x_axis="time (ns)",
+                                         y_axis=y_axis, title=title)
 
             return True
         else:
@@ -862,15 +841,26 @@ trace -c <counter_name>
     Start tracing a given counter. This sets up a subscription to receive
     updates from the model being debugged whenever this counter's value changes
     and to plot the value of the counter over time.
+
+trace latency <from_module> <to_module>
+trace -l <from_module> <to_module>
+    Start tracing the latency between the two specified modules. This is
+    calculated as the time difference between a packet being read at
+    <from_module> and the same packet being written at <to_module>.
+
+trace throughput <module>
+trace -t <module>
+    Start tracing the throughput of a given module. This is calculated
+    as the number of packets per second written by the module.
         '''
         args = line.split()
         status = False
         if   len(args) == 2 and args[0] in ('counter','-c'):
-            status = self.debugger.start_trace_counter(args[1])
+            status = self.debugger.start_trace(counter=args[1])
         elif len(args) == 3 and args[0] in ('latency','-l'):
-            status = self.debugger.start_trace_latency(args[1], args[2])
+            status = self.debugger.start_trace(from_latency=args[1], to_latency=args[2])
         elif len(args) == 2 and args[0] in ('throughput', '-t'):
-            status = self.debugger.start_trace_throughput(args[1])
+            status = self.debugger.start_trace(throughput=args[1])
         else:
             raise BadInputException("trace")
 
