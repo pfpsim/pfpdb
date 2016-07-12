@@ -494,6 +494,8 @@ class PFPSimDebugger(object):
         THROUGHPUT   = 'throughput'
         COUNTER      = 'counter'
 
+        APPEND       = 'append'
+
         if THROUGHPUT in kwargs:
             request = StartTracingMessage(throughput=kwargs[THROUGHPUT])
             y_axis  = "throughput (pps)"
@@ -527,8 +529,12 @@ class PFPSimDebugger(object):
             msg = PFPSimDebugger_pb2.StartTracingStatusMsg()
             msg.ParseFromString(recv_msg.message)
 
-            self.trace_manager.add_trace(msg.id, x_axis="time (ns)",
-                                         y_axis=y_axis, title=title)
+            if APPEND in kwargs and kwargs[APPEND] is not None:
+                self.trace_manager.append_to_trace(kwargs[APPEND], msg.id,
+                                                   y_axis=y_axis, title=title)
+            else:
+                self.trace_manager.add_trace(msg.id, x_axis="time (ns)",
+                                             y_axis=y_axis, title=title)
 
             return True
         else:
@@ -836,31 +842,42 @@ restart clean
     @handle_bad_input
     def do_trace(self, line):
         '''
-trace counter <counter_name>
-trace -c <counter_name>
+trace [append <id>] counter <counter_name>
+trace [append <id>] -c <counter_name>
     Start tracing a given counter. This sets up a subscription to receive
     updates from the model being debugged whenever this counter's value changes
     and to plot the value of the counter over time.
 
-trace latency <from_module> <to_module>
-trace -l <from_module> <to_module>
+trace [append <id>] latency <from_module> <to_module>
+trace [append <id>] -l <from_module> <to_module>
     Start tracing the latency between the two specified modules. This is
     calculated as the time difference between a packet being read at
     <from_module> and the same packet being written at <to_module>.
 
-trace throughput <module>
-trace -t <module>
+trace [append <id>] throughput <module>
+trace [append <id>] -t <module>
     Start tracing the throughput of a given module. This is calculated
     as the number of packets per second written by the module.
         '''
         args = line.split()
+
+        if len(args) >= 2 and args[0] == 'append':
+            append_id = int(args[1])
+            args = args[2:]
+        else:
+            append_id = None
+
         status = False
         if   len(args) == 2 and args[0] in ('counter','-c'):
-            status = self.debugger.start_trace(counter=args[1])
+            status = self.debugger.start_trace(counter=args[1],
+                                               append=append_id)
         elif len(args) == 3 and args[0] in ('latency','-l'):
-            status = self.debugger.start_trace(from_latency=args[1], to_latency=args[2])
+            status = self.debugger.start_trace(from_latency=args[1],
+                                               to_latency=args[2],
+                                               append=append_id)
         elif len(args) == 2 and args[0] in ('throughput', '-t'):
-            status = self.debugger.start_trace(throughput=args[1])
+            status = self.debugger.start_trace(throughput=args[1],
+                                               append=append_id)
         else:
             raise BadInputException("trace")
 

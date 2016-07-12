@@ -26,37 +26,64 @@ class TraceManager(object):
         self.log = logging.getLogger("TraceManager")
         self.log.addHandler(logging.StreamHandler())
 
-    def add_trace(self, trace_id, **kwargs):
+    def _ensure_trace_dispatcher(self):
         if self._trace_dispatcher is None:
             self.log.debug("Creating and starting trace dispatcher")
             self._trace_dispatcher = TraceManager._TraceDispatcher(self.ipc_url, self.topic)
             self._trace_dispatcher.start()
 
+    def add_trace(self, trace_id, **kwargs):
+        self._ensure_trace_dispatcher()
+
         self.log.debug("Creating and adding Trace")
         self._trace_dispatcher.add_trace(TraceManager._Trace(
-            kwargs["x_axis"] if "x_axis" in kwargs else "",
-            kwargs["y_axis"] if "y_axis" in kwargs else "",
-            kwargs["title"]  if "title"  in kwargs else "",
-            trace_id))
+                kwargs.get("x_axis", ""), kwargs.get("y_axis", ""),
+                kwargs.get("title", ""),  trace_id))
+
+    def append_to_trace(self, parent_trace_id, trace_id, **kwargs):
+        self._ensure_trace_dispatcher()
+
+        self.log.debug("Adding new subscription to existing trace")
+
+        self._trace_dispatcher.append_to_trace(parent_trace_id, trace_id)
 
     class _TraceDispatcher(threading.Thread):
         def __init__(self, ipc_url, topic):
             super(TraceManager._TraceDispatcher, self).__init__()
             self.daemon = True
 
-            self.queue = queue.Queue()
             self.sock  = nnpy.Socket(nnpy.AF_SP, nnpy.SUB)
             self.sock.setsockopt(nnpy.SUB, nnpy.SUB_SUBSCRIBE, topic)
             self.sock.connect(ipc_url)
             self.topic = topic
 
+            self.lock = threading.Lock()
+            self.trace_map = {}
+
             self.log = logging.getLogger("_TraceDispatcher")
             self.log.addHandler(logging.StreamHandler())
 
         def add_trace(self, trace):
-            self.log.debug("Enqueuing and starting trace")
-            self.queue.put_nowait(trace)
-            trace.start()
+            """Add the trace to the internal map of trace-ids -> traces"""
+            with self.lock:
+                if trace.id_ not in self.trace_map:
+                    self.log.debug("Trace dispatcher storing trace with id %d"
+                                   % trace.id_)
+                    self.trace_map[trace.id_] = trace
+                else:
+                    self.log.warning("Received duplicate trace id %d"
+                                     % trace.id_)
+
+        def append_to_trace(self, parent_trace_id, trace_id):
+            """Associate an existing trace object with a new id"""
+            with self.lock:
+                if parent_trace_id not in self.trace_map:
+                    self.log.warning("Tried to associate to non-existant trace %d" % parent_trace_id)
+                elif trace_id in self.trace_map:
+                    self.log.warning("Received duplicate trace id %d" % trace_id)
+                else:
+                    self.trace_map[trace_id] = self.trace_map[parent_trace_id]
+
 
         def _deserialize_messages(self, messages):
             def _deserialize_message(msg):
@@ -70,7 +97,6 @@ class TraceManager(object):
             return map(_deserialize_message, messages)
 
         def run(self):
-            trace_map = {}
             while True:
                 msgs = []
                 # Read at least one message blockingly.
@@ -88,32 +114,18 @@ class TraceManager(object):
                             nnpy.nanomsg.nn_strerror(nnpy.nanomsg.nn_errno()))
                         raise RuntimeError("Error in nanomsg recv: " + error_msg)
 
-                # Now after receiving this batch of messages, but before processing them,
-                # We will process the queue of new traces. This ensures any traces have themselves
-                # initialized *before* messages belonging to them are processed.
-
-                while not self.queue.empty():
-                    self.log.debug("Trace dispatcher got new trace")
-                    trace = self.queue.get_nowait()
-
-                    if trace.id_ not in trace_map:
-                        self.log.debug("Trace dispatcher storing trace with id %d"
-                                       % trace.id_)
-                        trace_map[trace.id_] = trace
-                    else:
-                        self.log.warning("Received duplicate trace id %d"
-                                         % trace.id_)
 
                 msgs = self._deserialize_messages(msgs)
 
-                for msg in msgs:
-                    if msg.id_ in trace_map:
-                        self.log.debug("trace dispatcher received message for trace %d"
-                                      % msg.id_)
-                        trace_map[msg.id_].add_data(msg)
-                    else:
-                        self.log.warning("Received data for non-existant trace %d"
-                                         % msg.id_)
+                with self.lock:
+                    for msg in msgs:
+                        if msg.id_ in self.trace_map:
+                            self.log.debug("trace dispatcher received message for trace %d"
+                                          % msg.id_)
+                            self.trace_map[msg.id_].add_data(msg)
+                        else:
+                            self.log.warning("Received data for non-existant trace %d"
+                                             % msg.id_)
 
 
     class _Trace(multiprocessing.Process):
@@ -131,6 +143,8 @@ class TraceManager(object):
             self.log = logging.getLogger("_Trace%d" % trace_id)
             self.log.addHandler(logging.StreamHandler())
 
+            self.start()
+
         def add_data(self, data):
             self.log.debug("Trace %d enqueuing data" % self.id_)
             self.queue.put_nowait(data)
@@ -147,13 +161,12 @@ class TraceManager(object):
             # Ignore warning about using default backend
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
-                # Create the figure for this process
-                x = []
-                y = []
 
                 fig, ax = plt.subplots()
 
-                line, = ax.plot(x, y)
+                line = {}
+                x    = {}
+                y    = {}
 
                 # Non blocking mode.
                 plt.show(block=False)
@@ -173,17 +186,26 @@ class TraceManager(object):
 
                         assert msg.id == data.id_
 
-                        x.append(msg.timestamp)
+                        id_ = data.id_
+
+                        if data.id_ not in line:
+                            x[id_] = []
+                            y[id_] = []
+                            line[id_], = ax.plot(x[id_], y[id_])
+
+                        x[id_].append(msg.timestamp)
 
                         if msg.HasField("float_value"):
-                            y.append(msg.float_value)
+                            y[id_].append(msg.float_value)
                         elif msg.HasField("int_value"):
-                            y.append(msg.int_value)
+                            y[id_].append(msg.int_value)
                         else:
                             self.log.warning("Something wrong, no float or int value")
 
-                    line.set_ydata(y)
-                    line.set_xdata(x)
+                    for i in line:
+                        line[i].set_ydata(y[i])
+                        line[i].set_xdata(x[i])
+
                     ax.relim()
                     ax.autoscale_view()
                     fig.canvas.draw()
