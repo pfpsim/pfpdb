@@ -45,7 +45,8 @@ class TraceManager(object):
 
         self.log.debug("Adding new subscription to existing trace")
 
-        self._trace_dispatcher.append_to_trace(parent_trace_id, trace_id)
+        self._trace_dispatcher.append_to_trace(parent_trace_id, trace_id,
+                kwargs.get("title", ""), kwargs.get("y_axis",""))
 
     class _TraceDispatcher(threading.Thread):
         def __init__(self, ipc_url, topic):
@@ -70,11 +71,13 @@ class TraceManager(object):
                     self.log.debug("Trace dispatcher storing trace with id %d"
                                    % trace.id_)
                     self.trace_map[trace.id_] = trace
+
+                    trace.add_trace(trace.id_, trace.title, trace.y_axis)
                 else:
                     self.log.warning("Received duplicate trace id %d"
                                      % trace.id_)
 
-        def append_to_trace(self, parent_trace_id, trace_id):
+        def append_to_trace(self, parent_trace_id, trace_id, title, y_axis):
             """Associate an existing trace object with a new id"""
             with self.lock:
                 if parent_trace_id not in self.trace_map:
@@ -83,6 +86,7 @@ class TraceManager(object):
                     self.log.warning("Received duplicate trace id %d" % trace_id)
                 else:
                     self.trace_map[trace_id] = self.trace_map[parent_trace_id]
+                    self.trace_map[trace_id].add_trace(trace_id, title, y_axis)
 
 
         def _deserialize_messages(self, messages):
@@ -133,11 +137,12 @@ class TraceManager(object):
             super(TraceManager._Trace, self).__init__()
             self.daemon = True
 
-            self.queue    = multiprocessing.Queue()
-            self.x_axis   = x_axis
-            self.y_axis   = y_axis
-            self.title    = title
-            self.id_      = trace_id
+            self.data_queue  = multiprocessing.Queue()
+            self.trace_queue = multiprocessing.Queue()
+            self.x_axis      = x_axis
+            self.y_axis      = y_axis
+            self.title       = title
+            self.id_         = trace_id
 
             # TODO how does this work across subprocess boundary?
             self.log = logging.getLogger("_Trace%d" % trace_id)
@@ -145,9 +150,13 @@ class TraceManager(object):
 
             self.start()
 
+        def add_trace(self, trace_id, title, y_axis):
+            self.log.debug("Trace %d being added")
+            self.trace_queue.put_nowait((trace_id, title, y_axis))
+
         def add_data(self, data):
             self.log.debug("Trace %d enqueuing data" % self.id_)
-            self.queue.put_nowait(data)
+            self.data_queue.put_nowait(data)
 
         def run(self):
             self.log.debug("_Trace subprocess beginning")
@@ -162,52 +171,98 @@ class TraceManager(object):
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
 
-                fig, ax = plt.subplots()
+                fig, root_ax = plt.subplots()
 
-                line = {}
-                x    = {}
-                y    = {}
+                line   = {}
+                legend = []
+                x      = {}
+                y      = {}
+                ax     = {}
 
                 # Non blocking mode.
                 plt.show(block=False)
                 fig.canvas.draw()
 
-                plt.xlabel(self.x_axis)
-                plt.ylabel(self.y_axis)
-                plt.title(self.title)
+                plt.title("Trace %d" % self.id_)
 
                 self.log.debug("_Trace done creating figure")
                 while True:
-                    while not self.queue.empty():
-                        data = self.queue.get_nowait()
+                    # Queue of newly added traces.
+                    while not self.trace_queue.empty():
+                        id_, title, y_axis = self.trace_queue.get_nowait()
 
+                        # Each trace has an x and y series associated to it
+                        x[id_] = []
+                        y[id_] = []
+
+                        # Each unique y axis label has its own seperate axis
+                        # TODO(gordon) this seems a little brittle, we are
+                        # just magically relying on the axis labels here. We
+                        # should introduce some kind of enum-like setup for
+                        # this.
+                        if len(ax) == 0:
+                            # The first one uses the root axis
+                            ax[y_axis] = root_ax
+
+                            ax[y_axis].set_ylabel(y_axis)
+                        elif y_axis not in ax:
+                            # Subsequent ones create their own new axis
+                            # if one does not already exist.
+                            ax[y_axis] = root_ax.twinx()
+
+                            # We set the ylabel of the extra axes
+                            ax[y_axis].set_ylabel(y_axis)
+
+                        # Each trace has its own line
+                        line[id_], = ax[y_axis].plot([], [])
+
+                        # Update the legend entries with the newly added line
+                        legend.append((line[id_], title))
+
+                        # Refresh the figure's legend.
+                        root_ax.legend((e[0] for e in legend),
+                                       (e[1] for e in legend))
+
+
+                    # For each incoming data point, we add it to the
+                    # corresponding series
+                    while not self.data_queue.empty():
+                        # We dequeue and parse the protobuf message containing
+                        # the data point
+                        data = self.data_queue.get_nowait()
                         msg = pb.TracingUpdateMsg()
                         msg.ParseFromString(data.payload)
 
+                        # Ensure that the message is valid
+                        # TODO(gordon) handle this better.
                         assert msg.id == data.id_
+                        assert msg.HasField("timestamp")
+                        assert msg.HasField("float_value") or msg.HasField("int_value")
 
-                        id_ = data.id_
-
-                        if data.id_ not in line:
-                            x[id_] = []
-                            y[id_] = []
-                            line[id_], = ax.plot(x[id_], y[id_])
-
-                        x[id_].append(msg.timestamp)
+                        x[data.id_].append(msg.timestamp)
 
                         if msg.HasField("float_value"):
-                            y[id_].append(msg.float_value)
-                        elif msg.HasField("int_value"):
-                            y[id_].append(msg.int_value)
-                        else:
-                            self.log.warning("Something wrong, no float or int value")
+                            y[data.id_].append(msg.float_value)
+                        else: # msg.HasField("int_value")
+                            y[data.id_].append(msg.int_value)
 
+                    # After updating all series, we update all the matplotlib
+                    # line objects.
+                    # TODO(gordon) we could be smarter about this and only
+                    # update those that actually had new data added.
                     for i in line:
                         line[i].set_ydata(y[i])
                         line[i].set_xdata(x[i])
 
-                    ax.relim()
-                    ax.autoscale_view()
+                    # Recalculate the limits of the plot
+                    # TODO(gordon) we could be smarter about this (see above)
+                    for axis in ax.values():
+                        axis.relim()
+                        axis.autoscale_view()
+
+                    # Redraw and handle events
+                    # TODO(gordon) is this not going to use crazy cpu?
+                    # since we're just spinning around in the same loop?
                     fig.canvas.draw()
                     fig.canvas.flush_events()
 
