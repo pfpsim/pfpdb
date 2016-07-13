@@ -158,6 +158,16 @@ class TraceManager(object):
             self.log.debug("Trace %d enqueuing data" % self.id_)
             self.data_queue.put_nowait(data)
 
+
+        #      TODO       TODO
+        # Need to make an Axis class that keeps track of all the crap related
+        # to an axis. Specifically I'm talking about colors basically.
+        #
+        # For each axis then, need to track all the lines in it, and assign it a
+        # color range. The colors of the lines inside would then be split amongst that
+        # range. The color of the axis itself would be the color of the middle of the
+        # range.
+
         def run(self):
             self.log.debug("_Trace subprocess beginning")
             # matplotlib must be imported in each multiprocessing process
@@ -178,6 +188,12 @@ class TraceManager(object):
                 x      = {}
                 y      = {}
                 ax     = {}
+
+                offset        = 1
+                offset_inc    = 0.2
+
+                fig_right     =  0.8
+                fig_right_inc = -0.05
 
                 # Non blocking mode.
                 plt.show(block=False)
@@ -212,6 +228,12 @@ class TraceManager(object):
 
                             # We set the ylabel of the extra axes
                             ax[y_axis].set_ylabel(y_axis)
+
+                            ax[y_axis].spines["right"].set_position(("axes", offset))
+                            offset += offset_inc
+
+                            fig.subplots_adjust(right=fig_right)
+                            fig_right += fig_right_inc
 
                         # Each trace has its own line
                         line[id_], = ax[y_axis].plot([], [])
