@@ -119,7 +119,9 @@ except ImportError:
 InstallationRequirments = [
     'nnpy',
     'tabulate',
-    'hexdump'
+    'hexdump',
+    'colour',
+    'matplotlib'
 ]
 
 if sys.version_info[0] < 3:
