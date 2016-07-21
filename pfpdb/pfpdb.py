@@ -37,6 +37,7 @@
 
 __version__ = "1.0.0"
 import os
+import re
 import sys
 import subprocess
 import nnpy
@@ -736,6 +737,14 @@ class PFPSimDebuggerCmd(cmd.Cmd):
         self.debugger = debugger
         self.run_called = False
         self.sim_ended = False
+
+        # By default many special chars delimit words for the Cmd completer
+        # but our counter names may have weird special chars in them, so we
+        # want to only delimit based on space chars
+        #
+        # Sometimes global stuff makes life better
+        import readline
+        readline.set_completer_delims(" \t\n")
 
     # run command - starts running the simulation
     @handle_bad_input
@@ -1715,6 +1724,30 @@ table_dump <table_name>
     def complete_restart(self, text, line, begidx, endidx):
         RESTART_OPTIONS = ('clean',)
         return [i for i in RESTART_OPTIONS if i.startswith(text)]
+
+    def complete_trace(self, text, line, begidx, endidx):
+        TRACE_MODES = ('latency', 'throughput', 'counter')
+        APPEND      = ('append',)
+
+        splitline = line.split()
+
+        starts_with_text = lambda s: s.startswith(text)
+
+        if re.match(r'^trace(\s*|\s+[a-z]+)$', line):
+            return filter(starts_with_text, APPEND + TRACE_MODES)
+
+        # TODO(gordon) complete trace ids?
+
+        if re.match(r'^trace\s+append\s+\d+(\s*|\s+[a-z]+)$', line):
+            return filter(starts_with_text, TRACE_MODES)
+
+        if re.match(r'^trace\s+(append\s+\d+\s+)?counter(\s*|\s+[^\s]+)$', line):
+            names, values = self.debugger.print_all_counters()
+            return filter(starts_with_text, names)
+
+        # TODO(gordon) complete module names?
+        return ()
+
 
     # Auto complete for watch command
     def complete_watch(self, text, line, begidx, endidx):
