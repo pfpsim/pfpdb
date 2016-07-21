@@ -857,8 +857,8 @@ trace [append <id>] -c <counter_name>
     updates from the model being debugged whenever this counter's value changes
     and to plot the value of the counter over time.
 
-trace [append <id>] latency <from_module> <to_module>
-trace [append <id>] -l <from_module> <to_module>
+trace [append <id>] latency <from_module> [<to_module>]
+trace [append <id>] -l <from_module> [<to_module>]
     Start tracing the latency between the two specified modules. This is
     calculated as the time difference between a packet being read at
     <from_module> and the same packet being written at <to_module>.
@@ -880,9 +880,12 @@ trace [append <id>] -t <module>
         if   len(args) == 2 and args[0] in ('counter','-c'):
             status = self.debugger.start_trace(counter=args[1],
                                                append=append_id)
-        elif len(args) == 3 and args[0] in ('latency','-l'):
+        elif len(args) in (2,3) and args[0] in ('latency','-l'):
             status = self.debugger.start_trace(from_latency=args[1],
-                                               to_latency=args[2],
+                                               # Use the same module as source
+                                               # and destination if only one
+                                               # module is given
+                                               to_latency=args[-1],
                                                append=append_id)
         elif len(args) == 2 and args[0] in ('throughput', '-t'):
             status = self.debugger.start_trace(throughput=args[1],
