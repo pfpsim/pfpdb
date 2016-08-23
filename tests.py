@@ -14,6 +14,8 @@ from hexdump import hexdump
 
 import sys
 
+import time
+
 if sys.version_info[0] < 3:
     def str_to_bytes(s):
         return [c for c in s]
@@ -297,6 +299,10 @@ def check_run(response_msg, run_command, expected_stdout, validator=None):
 
     model_thread.setDaemon(True)
     model_thread.start()
+
+    # To avoid race condition, we need to make sure that the model_thread is
+    # really started before interacting with it.
+    time.sleep(0.25)
 
     ipc_session  = DebuggerIPCSession(ipc_url)
     debugger     = PFPSimDebugger(ipc_session, DummyProcess(), None, False)
