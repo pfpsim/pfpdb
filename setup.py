@@ -126,7 +126,7 @@ InstallationRequirments = [
 # We can't use matplotlib under travis anyways, and installing it is
 # very expensive in Travis since we test the install steps multiple times
 if 'TRAVIS' not in os.environ or os.environ['TRAVIS'] != 'true':
-    InstallationRequirements.append('matplotlib')
+    InstallationRequirments.append('matplotlib')
 
 if sys.version_info[0] < 3:
     InstallationRequirments.append("protobuf")
