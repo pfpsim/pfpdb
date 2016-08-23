@@ -1,4 +1,4 @@
-# PFPSim Debugger ( pfpdb )
+# PFPSim Debugger ( pfpdb ) [![Build Status](https://travis-ci.org/pfpsim/pfpdb.svg?branch=master)](https://travis-ci.org/pfpsim/pfpdb)
 
 The official debugger provided as a part of the PFPSim Framework for packet level debugging in [PFPSim Models](https://github.com/pfpsim/pfpgen) linked against the [PFPSim Library](https://github.com/pfpsim/PFPSim).
 
