@@ -37,6 +37,7 @@
 
 __version__ = "1.0.0"
 import os
+import re
 import sys
 import subprocess
 import nnpy
@@ -48,9 +49,8 @@ from functools import wraps
 from tabulate import tabulate
 from hexdump import hexdump
 import json
-from threading import Thread
-from time import sleep
 from . import PFPSimDebugger_pb2
+from . import tracing
 
 if sys.version_info[0] > 2:
     from functools import reduce
@@ -353,6 +353,27 @@ class GetPacketFieldMessage(DebuggerMessage):
         self.message.id = id
         self.message.field_name = field_name
 
+class StartTracingMessage(DebuggerMessage):
+    def __init__(self, **kwargs):
+        super(StartTracingMessage, self).__init__(
+                PFPSimDebugger_pb2.DebugMsg.StartTracing)
+        self.message = PFPSimDebugger_pb2.StartTracingMsg()
+
+        if "counter" in kwargs:
+            self.message.type = PFPSimDebugger_pb2.StartTracingMsg.COUNTER
+            self.message.name = kwargs["counter"]
+        elif "throughput" in kwargs:
+            self.message.type = PFPSimDebugger_pb2.StartTracingMsg.THROUGHPUT
+            self.message.name = kwargs["throughput"]
+        elif "from_latency" in kwargs and "to_latency" in kwargs:
+            self.message.type = PFPSimDebugger_pb2.StartTracingMsg.LATENCY
+            self.message.name = kwargs["from_latency"]
+            self.message.end_name = kwargs["to_latency"]
+        else:
+            raise TypeError("Missing required Keyword Args, one of: 'counter',"
+                          + " 'throughput', or ('from_latency','to_latency')")
+
+
 # PFPSimDebugger class - Manages requests and replies through the IPC Session and the child process. Creates a layer of abstraction between the front end of the debugger and the ipc session and the child process.
 class PFPSimDebugger(object):
     def __init__(self, ipc_session, process, pid, verbose):
@@ -361,6 +382,7 @@ class PFPSimDebugger(object):
         self.pid = pid
         self.log = logging.getLogger("cmd_logger")
         self.log.addHandler(logging.StreamHandler())
+        self.trace_manager = tracing.TraceManager()
         if verbose:
             self.log.setLevel("DEBUG")
 
@@ -466,6 +488,59 @@ class PFPSimDebugger(object):
         msg_type, recv_msg = self.recv()
         self.log.debug("Msg Received!")
         return msg_type, recv_msg
+
+    def start_trace(self, **kwargs):
+        FROM_LATENCY = 'from_latency'
+        TO_LATENCY   = 'to_latency'
+        THROUGHPUT   = 'throughput'
+        COUNTER      = 'counter'
+
+        APPEND       = 'append'
+
+        if THROUGHPUT in kwargs:
+            request = StartTracingMessage(throughput=kwargs[THROUGHPUT])
+            y_axis  = "throughput (pps)"
+            title   = "Throughput of " + kwargs[THROUGHPUT]
+
+        elif COUNTER in kwargs:
+            request = StartTracingMessage(counter=kwargs[COUNTER])
+            y_axis  = "counter value"
+            title   = kwargs[COUNTER]
+
+        elif FROM_LATENCY in kwargs and TO_LATENCY in kwargs:
+            request = StartTracingMessage(to_latency=kwargs[TO_LATENCY],
+                                      from_latency=kwargs[FROM_LATENCY])
+            y_axis  = "latency (ns)"
+            if kwargs[FROM_LATENCY] == kwargs[TO_LATENCY]:
+                title = "Latency of " + kwargs[FROM_LATENCY]
+            else:
+                title = "Latency from " + kwargs[FROM_LATENCY] + " to " + kwargs[TO_LATENCY]
+
+        else:
+            raise TypeError("Missing required keyword arguments. " +
+                            "Requires one of ["+THROUGHPUT+", "+COUNTER+", " +
+                            "("+FROM_LATENCY+", "++")]")
+
+        self.ipc_session.send(request)
+        self.log.debug("Msg Sent!")
+        msg_type, recv_msg = self.recv()
+        self.log.debug("Msg Received!")
+
+        if msg_type == PFPSimDebugger_pb2.DebugMsg.StartTracingStatus:
+            msg = PFPSimDebugger_pb2.StartTracingStatusMsg()
+            msg.ParseFromString(recv_msg.message)
+
+            if APPEND in kwargs and kwargs[APPEND] is not None:
+                self.trace_manager.append_to_trace(kwargs[APPEND], msg.id,
+                                                   y_axis=y_axis, title=title)
+            else:
+                self.trace_manager.add_trace(msg.id, x_axis="time (ns)",
+                                             y_axis=y_axis, title=title)
+
+            return True
+        else:
+            return False
+
 
     def continue_(self, time_ns = None):
         self.log.debug("Request: Continue")
@@ -663,6 +738,14 @@ class PFPSimDebuggerCmd(cmd.Cmd):
         self.run_called = False
         self.sim_ended = False
 
+        # By default many special chars delimit words for the Cmd completer
+        # but our counter names may have weird special chars in them, so we
+        # want to only delimit based on space chars
+        #
+        # Sometimes global stuff makes life better
+        import readline
+        readline.set_completer_delims(" \t\n")
+
     # run command - starts running the simulation
     @handle_bad_input
     def do_run(self, line):
@@ -764,6 +847,56 @@ restart clean
                     self.debugger.ignore_module(ignore.module_list[k])
         else:
             print("Cannot restart an attached process")
+
+    @handle_bad_input
+    def do_trace(self, line):
+        '''
+trace [append <id>] counter <counter_name>
+trace [append <id>] -c <counter_name>
+    Start tracing a given counter. This sets up a subscription to receive
+    updates from the model being debugged whenever this counter's value changes
+    and to plot the value of the counter over time.
+
+trace [append <id>] latency <from_module> [<to_module>]
+trace [append <id>] -l <from_module> [<to_module>]
+    Start tracing the latency between the two specified modules. This is
+    calculated as the time difference between a packet being read at
+    <from_module> and the same packet being written at <to_module>.
+
+trace [append <id>] throughput <module>
+trace [append <id>] -t <module>
+    Start tracing the throughput of a given module. This is calculated
+    as the number of packets per second written by the module.
+        '''
+        args = line.split()
+
+        if len(args) >= 2 and args[0] == 'append':
+            append_id = int(args[1])
+            args = args[2:]
+        else:
+            append_id = None
+
+        status = False
+        if   len(args) == 2 and args[0] in ('counter','-c'):
+            status = self.debugger.start_trace(counter=args[1],
+                                               append=append_id)
+        elif len(args) in (2,3) and args[0] in ('latency','-l'):
+            status = self.debugger.start_trace(from_latency=args[1],
+                                               # Use the same module as source
+                                               # and destination if only one
+                                               # module is given
+                                               to_latency=args[-1],
+                                               append=append_id)
+        elif len(args) == 2 and args[0] in ('throughput', '-t'):
+            status = self.debugger.start_trace(throughput=args[1],
+                                               append=append_id)
+        else:
+            raise BadInputException("trace")
+
+        if status:
+            print("Trace started")
+        else:
+            print("Failed to start trace for counter " + args[1])
 
     # print command - obtain information from simulation and print it to screen
     @handle_bad_input
@@ -1594,6 +1727,30 @@ table_dump <table_name>
     def complete_restart(self, text, line, begidx, endidx):
         RESTART_OPTIONS = ('clean',)
         return [i for i in RESTART_OPTIONS if i.startswith(text)]
+
+    def complete_trace(self, text, line, begidx, endidx):
+        TRACE_MODES = ('latency', 'throughput', 'counter')
+        APPEND      = ('append',)
+
+        splitline = line.split()
+
+        starts_with_text = lambda s: s.startswith(text)
+
+        if re.match(r'^trace(\s*|\s+[a-z]+)$', line):
+            return filter(starts_with_text, APPEND + TRACE_MODES)
+
+        # TODO(gordon) complete trace ids?
+
+        if re.match(r'^trace\s+append\s+\d+(\s*|\s+[a-z]+)$', line):
+            return filter(starts_with_text, TRACE_MODES)
+
+        if re.match(r'^trace\s+(append\s+\d+\s+)?counter(\s*|\s+[^\s]+)$', line):
+            names, values = self.debugger.print_all_counters()
+            return filter(starts_with_text, names)
+
+        # TODO(gordon) complete module names?
+        return ()
+
 
     # Auto complete for watch command
     def complete_watch(self, text, line, begidx, endidx):

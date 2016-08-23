@@ -14,6 +14,8 @@ from hexdump import hexdump
 
 import sys
 
+import time
+
 if sys.version_info[0] < 3:
     def str_to_bytes(s):
         return [c for c in s]
@@ -266,6 +268,19 @@ def test_run():
     test_method.description = "Print field packet id 0, default format"
     yield test_method
 
+    #################################################################
+    response      = pb2.DebugMsg()
+    response.type = pb2.DebugMsg.StartTracingStatus
+
+    submsg = pb2.StartTracingStatusMsg()
+    submsg.id = 1
+
+    response.message = submsg.SerializeToString()
+
+    test_method = partial(check_run, response, "trace counter foobar", "Trace started")
+    test_method.description = "Start tracing a counter"
+    yield test_method
+
 
 def assert_equal(expected, actual):
     try:
@@ -282,7 +297,12 @@ def check_run(response_msg, run_command, expected_stdout, validator=None):
     model_thread = Thread(target=dummy_model_main,
                           args=(ipc_url, response_msg, validator))
 
+    model_thread.setDaemon(True)
     model_thread.start()
+
+    # To avoid race condition, we need to make sure that the model_thread is
+    # really started before interacting with it.
+    time.sleep(0.25)
 
     ipc_session  = DebuggerIPCSession(ipc_url)
     debugger     = PFPSimDebugger(ipc_session, DummyProcess(), None, False)
